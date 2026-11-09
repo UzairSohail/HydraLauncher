@@ -3680,6 +3680,14 @@
     "settings_sync_error": "Couldn't sync",
     "settings_sync_needs_sign_in": "Sign in to Google above",
     "settings_sync_failed": "Couldn't sync settings",
-    "settings_sync_last_change_from": "Last change came from {{device}}"
+    "settings_sync_last_change_from": "Last change came from {{device}}",
+    "settings_sync_sign_in_again": "Sign in again",
+    "settings_sync_reason_no_client": "This build has no Google sign-in details. Set the CSM_GOOGLE_CLIENT_ID and CSM_GOOGLE_CLIENT_SECRET repository secrets and run the Release workflow again.",
+    "settings_sync_reason_sign_in_expired": "Your Google sign-in has expired or was revoked. Sign in again.",
+    "settings_sync_reason_sign_in_rejected": "Google rejected the saved sign-in ({{detail}}). It was probably made by a different copy of Cloud Save Manager, so sign in again from here.",
+    "settings_sync_reason_drive_refused": "Google Drive refused the request: {{detail}}",
+    "settings_sync_reason_offline": "Can't reach Google Drive. Check your connection and try again.",
+    "settings_sync_reason_bad_file": "The synced settings file in Google Drive is damaged ({{detail}}). Delete Cloud Save Manager/hydra/settings.json in Drive and sync again.",
+    "settings_sync_reason_unknown": "{{detail}}"
   }
 }

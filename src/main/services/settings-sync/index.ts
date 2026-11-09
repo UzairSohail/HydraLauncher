@@ -3,7 +3,12 @@ import { randomUUID } from "node:crypto";
 
 import { safeStorage } from "electron";
 
-import type { SettingsSyncStatus, Theme, UserPreferences } from "@types";
+import type {
+  SettingsSyncError,
+  SettingsSyncStatus,
+  Theme,
+  UserPreferences,
+} from "@types";
 import {
   db,
   downloadSourcesSublevel,
@@ -29,6 +34,7 @@ import {
   type SyncedTheme,
 } from "./settings-document";
 import { recordCollection, recordLocalValues } from "./sync-merge";
+import { describeSettingsSyncError } from "./sync-error";
 import { SYNCED_SECRET_KEYS } from "./synced-keys";
 
 const SETTINGS_FILE = "hydra/settings.json";
@@ -62,9 +68,6 @@ const newRecord = (): LocalSyncRecord => ({
   localKeys: { downloadSources: [], themes: [] },
 });
 
-const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : String(error);
-
 const toSyncedTheme = (theme: Theme): SyncedTheme => ({
   id: theme.id,
   name: theme.name,
@@ -86,7 +89,7 @@ export class SettingsSync {
   private static pushTimer: NodeJS.Timeout | null = null;
   private static periodicTimer: NodeJS.Timeout | null = null;
   private static applying = false;
-  private static lastError: string | null = null;
+  private static lastError: SettingsSyncError | null = null;
 
   private static async readRecord(): Promise<LocalSyncRecord> {
     const stored = await db
@@ -439,8 +442,8 @@ export class SettingsSync {
           this.lastError = null;
         } while (this.rerun);
       } catch (error) {
-        this.lastError = errorMessage(error);
-        logger.error("Settings sync failed", error);
+        this.lastError = describeSettingsSyncError(error);
+        logger.error(`Settings sync failed (${this.lastError.reason})`, error);
       } finally {
         this.running = null;
         this.notify(false);
