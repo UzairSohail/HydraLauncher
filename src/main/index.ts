@@ -72,8 +72,8 @@ const { autoUpdater } = updater;
 
 autoUpdater.setFeedURL({
   provider: "github",
-  owner: "hydralauncher",
-  repo: "hydra",
+  owner: "UzairSohail",
+  repo: "HydraLauncher",
 });
 
 autoUpdater.logger = logger;
