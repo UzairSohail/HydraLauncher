@@ -3,13 +3,13 @@ import type {
   SteamAchievement,
   UnlockedAchievement,
   UserAchievement,
-  UserPreferences,
 } from "@types";
 import { UserNotLoggedInError } from "@shared";
 
 import { db, gamesShopCacheSublevel, levelKeys } from "@main/level";
 import { HydraApi } from "../hydra-api";
 import { logger } from "../logger";
+import { getUserPreferences } from "../user-preferences";
 import { getGameAchievementData } from "../achievements/get-game-achievement-data";
 import {
   RetroAchievementsClient,
@@ -155,10 +155,7 @@ export const syncRetroAchievements = async ({
   shop,
   retroAchievementsGameId,
 }: SyncRetroAchievementsParams): Promise<RetroAchievementsSyncResult> => {
-  const userPreferences = await db.get<string, UserPreferences | null>(
-    levelKeys.userPreferences,
-    { valueEncoding: "json" }
-  );
+  const userPreferences = await getUserPreferences();
 
   const webApiKey = userPreferences?.retroAchievementsWebApiKey;
   const username = userPreferences?.retroAchievementsUsername;

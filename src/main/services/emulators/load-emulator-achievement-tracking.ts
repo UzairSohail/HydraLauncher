@@ -1,15 +1,9 @@
-import type { UserPreferences } from "@types";
-
-import { db, levelKeys } from "@main/level";
+import { getUserPreferences } from "../user-preferences";
 import { HydraApi } from "../hydra-api";
 import { resolveEmulatorAchievementTracking } from "./emulator-achievement-tracking";
 
 export const loadEmulatorAchievementTracking = async () => {
-  const userPreferences = await db
-    .get<string, UserPreferences | null>(levelKeys.userPreferences, {
-      valueEncoding: "json",
-    })
-    .catch(() => null);
+  const userPreferences = await getUserPreferences().catch(() => null);
 
   return resolveEmulatorAchievementTracking(
     userPreferences,

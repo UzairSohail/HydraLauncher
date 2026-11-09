@@ -16,6 +16,7 @@ export const levelKeys = {
   downloads: "downloads",
   downloadLayoutState: "downloadLayoutState",
   userPreferences: "userPreferences",
+  userPreferenceSecrets: "userPreferenceSecrets", // API keys and tokens, encrypted with safeStorage
   language: "language",
   screenState: "screenState",
   rpcPassword: "rpcPassword",

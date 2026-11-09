@@ -19,6 +19,10 @@ import {
   resolveEmulatorAchievementTracking,
 } from "@main/services/emulators/emulator-achievement-tracking";
 import { HydraApi } from "@main/services/hydra-api";
+import {
+  getUserPreferences,
+  saveUserPreferences,
+} from "@main/services/user-preferences";
 import { UnlockedAchievementsCache } from "@main/services/achievements/unlocked-achievements-cache";
 import { deleteRetroAchievementsEmulatorAccount } from "@main/services/retro-achievements/retro-achievements-emulator-account";
 import {
@@ -187,10 +191,7 @@ const updateUserPreferences = async (
   _event: Electron.IpcMainInvokeEvent,
   preferences: Partial<UserPreferences>
 ) => {
-  const userPreferences = await db.get<string, UserPreferences | null>(
-    levelKeys.userPreferences,
-    { valueEncoding: "json" }
-  );
+  const userPreferences = await getUserPreferences();
 
   await updateLanguagePreference(preferences.language);
   await pinExistingWinePrefixes(preferences, userPreferences);
@@ -206,13 +207,7 @@ const updateUserPreferences = async (
     ...normalizedDownloadDirectoryPreferences,
   };
 
-  await db.put<string, UserPreferences>(
-    levelKeys.userPreferences,
-    updatedPreferences,
-    {
-      valueEncoding: "json",
-    }
-  );
+  await saveUserPreferences(updatedPreferences);
 
   if (
     ACHIEVEMENT_VIEW_PREFERENCE_KEYS.some(
