@@ -6,11 +6,11 @@ import { downloadsSublevel } from "./level/sublevels/downloads";
 import { recoverInterruptedInstallers } from "./helpers/recover-interrupted-installers";
 import { orderBy } from "lodash-es";
 import { Downloader } from "@shared";
-import { levelKeys, db } from "./level";
+import { levelKeys } from "./level";
 import { refreshGlobalTrackersUrlCache } from "@main/helpers";
 import { syncRetroAchievementsEmulatorCredentials } from "@main/services/retro-achievements/emulator-credentials/emulator-credential-sync";
 import { reconcileRecompilationDiscs } from "@main/events/recompilation/recompilation-disc";
-import { type Download, type UserPreferences } from "../types";
+import { type Download } from "../types";
 import path from "node:path";
 import fs from "node:fs";
 import {
@@ -38,6 +38,10 @@ import {
   groupedSouvenirWorker,
 } from "@main/services";
 import { migrateDownloadSources } from "./helpers/migrate-download-sources";
+import {
+  getUserPreferences,
+  migratePreferenceSecrets,
+} from "./services/user-preferences";
 import { getDirSize } from "./services/download/helpers";
 import { isDebridPendingError } from "./services/download/debrid-files";
 import { GofileApi } from "./services/hosters";
@@ -79,12 +83,8 @@ export const loadState = async () => {
   await migrateEmulatorCloudSaveDefaults();
   await migrateGameVisibilityFields();
 
-  const userPreferences = await db.get<string, UserPreferences | null>(
-    levelKeys.userPreferences,
-    {
-      valueEncoding: "json",
-    }
-  );
+  await migratePreferenceSecrets();
+  const userPreferences = await getUserPreferences();
 
   Wine.syncUserPreferences(userPreferences);
   setTrackedGamesRunningListenerErrorReporter((error) =>

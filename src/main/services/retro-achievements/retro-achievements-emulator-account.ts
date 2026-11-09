@@ -1,9 +1,9 @@
 import axios from "axios";
 import { safeStorage } from "electron";
 
-import type { UserPreferences } from "@types";
 import { appVersion } from "@main/constants";
 import { db, levelKeys } from "@main/level";
+import { getUserPreferences } from "../user-preferences";
 
 export interface RetroAchievementsEmulatorAccount {
   username: string;
@@ -89,11 +89,7 @@ export const loadRetroAchievementsEmulatorAccount =
   async (): Promise<RetroAchievementsEmulatorAccount | null> => {
     const [stored, userPreferences] = await Promise.all([
       readStoredAccount(),
-      db
-        .get<string, UserPreferences | null>(levelKeys.userPreferences, {
-          valueEncoding: "json",
-        })
-        .catch(() => null),
+      getUserPreferences().catch(() => null),
     ]);
 
     if (!stored?.username || !stored.token) return null;

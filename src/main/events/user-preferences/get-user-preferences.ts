@@ -1,10 +1,4 @@
 import { registerEvent } from "../register-event";
-import { db, levelKeys } from "@main/level";
-import type { UserPreferences } from "@types";
+import { getUserPreferences } from "@main/services/user-preferences";
 
-const getUserPreferences = async () =>
-  db.get<string, UserPreferences | null>(levelKeys.userPreferences, {
-    valueEncoding: "json",
-  });
-
-registerEvent("getUserPreferences", getUserPreferences);
+registerEvent("getUserPreferences", () => getUserPreferences());
