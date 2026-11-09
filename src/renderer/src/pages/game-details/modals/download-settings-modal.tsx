@@ -1330,7 +1330,7 @@ export function DownloadSettingsModal({
                     );
                   }
 
-                  if (option.downloader === Downloader.RealDebrid) {
+                  if (option.downloader === Downloader.AllDebrid) {
                     return (
                       <div className="download-settings-modal__recommendation-badge">
                         <Badge>{t("recommended")}</Badge>

@@ -200,7 +200,17 @@ export const formatName = pipe<string>(
   (str) => str.trim()
 );
 
-const realDebridHosts = ["https://1fichier.com", "https://mediafire.com"];
+/** Hosts with no direct downloader that a debrid provider can still unlock. */
+const debridOnlyHosts = ["https://1fichier.com", "https://mediafire.com"];
+
+const buzzheavierHosts = [
+  "https://buzzheavier.com",
+  "https://www.buzzheavier.com",
+  "https://bzzhr.co",
+];
+
+/** Debrid providers that unlock regular file-hoster links. */
+const hosterDebridDownloaders = [Downloader.AllDebrid, Downloader.RealDebrid];
 
 export { isBlockedTorrentDownload } from "./debrid-only";
 
@@ -232,9 +242,12 @@ export const getDownloadersForUri = (uri: string) => {
   if (isArchiveOrgFileUri(uri)) {
     return [Downloader.ArchiveOrg];
   }
+  if (buzzheavierHosts.some((host) => uri.startsWith(host))) {
+    return [Downloader.Buzzheavier];
+  }
 
-  if (realDebridHosts.some((host) => uri.startsWith(host)))
-    return [Downloader.RealDebrid];
+  if (debridOnlyHosts.some((host) => uri.startsWith(host)))
+    return [...hosterDebridDownloaders];
 
   // Magnets are only ever downloaded through a debrid provider, never peer to peer.
   if (uri.startsWith("magnet:")) {
@@ -245,6 +258,11 @@ export const getDownloadersForUri = (uri: string) => {
       Downloader.Premiumize,
       Downloader.AllDebrid,
     ];
+  }
+
+  // Any other hoster link can still be tried through a debrid provider.
+  if (uri.startsWith("https://") || uri.startsWith("http://")) {
+    return [...hosterDebridDownloaders];
   }
 
   return [];

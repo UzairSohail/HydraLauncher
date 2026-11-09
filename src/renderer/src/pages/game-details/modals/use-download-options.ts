@@ -79,13 +79,6 @@ export const getDownloadOptions = (
         return false;
       }
 
-      if (
-        downloader === Downloader.AllDebrid &&
-        !isFeatureEnabled(Feature.AllDebrid)
-      ) {
-        return false;
-      }
-
       return true;
     })
     .map((downloader) => {
@@ -162,16 +155,16 @@ export const getDefaultDownloader = (
 ): Downloader | null => {
   if (availableDownloaders.length === 0) return null;
 
+  if (availableDownloaders.includes(Downloader.AllDebrid)) {
+    return Downloader.AllDebrid;
+  }
+
   if (availableDownloaders.includes(Downloader.RealDebrid)) {
     return Downloader.RealDebrid;
   }
 
   if (availableDownloaders.includes(Downloader.Premiumize)) {
     return Downloader.Premiumize;
-  }
-
-  if (availableDownloaders.includes(Downloader.AllDebrid)) {
-    return Downloader.AllDebrid;
   }
 
   if (availableDownloaders.includes(Downloader.TorBox)) {
