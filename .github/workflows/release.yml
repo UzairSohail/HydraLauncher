@@ -139,6 +139,10 @@ jobs:
       # which sometimes answer 504; try the whole install up to 3 times.
       - name: Install dependencies
         shell: bash
+        env:
+          # Same Electron mirror electron-builder.yml already packages from,
+          # so the install does not depend on GitHub release downloads.
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
         run: |
           for attempt in 1 2 3; do
             yarn --frozen-lockfile && exit 0
