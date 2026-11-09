@@ -135,8 +135,17 @@ jobs:
           git config --global url."https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/".insteadOf "https://github.com/"
           echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
 
+      # Install scripts download Electron and Ludusavi from GitHub releases,
+      # which sometimes answer 504; try the whole install up to 3 times.
       - name: Install dependencies
-        run: yarn --frozen-lockfile
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            yarn --frozen-lockfile && exit 0
+            echo "Install failed (attempt $attempt), retrying in $((attempt * 30))s..."
+            sleep $((attempt * 30))
+          done
+          exit 1
 
       # Save before packaging so later failures do not discard compiled dependencies.
       - name: Save vcpkg binary packages
