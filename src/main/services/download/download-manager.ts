@@ -3524,6 +3524,13 @@ export class DownloadManager {
 
   static async startDownload(download: Download, externalSignal?: AbortSignal) {
     externalSignal?.throwIfAborted();
+    // Magnets only ever go through debrid; refuse legacy peer-to-peer starts.
+    if (
+      download.downloader === Downloader.Torrent &&
+      download.uri?.startsWith("magnet:")
+    ) {
+      throw new Error(DownloadError.TorrentRequiresDebrid);
+    }
     const isHttp = this.isHttpDownloader(download.downloader);
     const downloadId = levelKeys.game(download.shop, download.objectId);
 

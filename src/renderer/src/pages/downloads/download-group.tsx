@@ -1468,7 +1468,13 @@ export function DownloadGroup({
                     <span className="download-group__simple-progress-text">
                       {game.download?.awaitingDebrid &&
                       game.download.debridAutoResume
-                        ? t("waiting_for_debrid")
+                        ? typeof game.download.debridRemoteProgress === "number"
+                          ? t("waiting_for_debrid_progress", {
+                              progress: formatDownloadProgress(
+                                game.download.debridRemoteProgress
+                              ),
+                            })
+                          : t("waiting_for_debrid")
                         : formatDownloadProgress(progress)}
                     </span>
                     <div className="download-group__progress-bar download-group__progress-bar--small">

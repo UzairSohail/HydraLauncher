@@ -8,7 +8,7 @@ import {
 } from "@main/services";
 import { createGame } from "@main/services/library-sync";
 import { downloadsSublevel, gamesSublevel, levelKeys } from "@main/level";
-import { parseBytes } from "@shared";
+import { DownloadError, isBlockedTorrentDownload, parseBytes } from "@shared";
 import {
   getGlobalTrackers,
   getMultipartDownloadParts,
@@ -42,6 +42,9 @@ const addGameToQueue = async (
   let didWriteDownload = false;
 
   try {
+    if (isBlockedTorrentDownload(downloader, uri)) {
+      throw new Error(DownloadError.TorrentRequiresDebrid);
+    }
     const globalTrackers = await getGlobalTrackers();
 
     download = {

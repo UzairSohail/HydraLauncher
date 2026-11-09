@@ -209,6 +209,19 @@ export class TorBoxClient {
     return { ...readyTorrent, name: readyTorrent.name || torrent.name };
   }
 
+  /** Progress (0..1) of a torrent TorBox is still downloading, if known. */
+  static async getRemoteProgress(uri: string): Promise<number | null> {
+    const { infoHash } = await parseTorrent(uri);
+    if (!infoHash) return null;
+    const hash = infoHash.toLowerCase();
+    const torrents = await this.getAllTorrentsFromUser();
+    const torrent = torrents.find((t) => t.hash?.toLowerCase() === hash);
+    if (!torrent) return null;
+    if (this.isReady(torrent)) return 1;
+    if (typeof torrent.progress !== "number") return null;
+    return Math.min(1, Math.max(0, torrent.progress));
+  }
+
   static async getDownloadFiles(uri: string, cachedOnly = false) {
     const torrent = await this.getDownloadableTorrent(uri, cachedOnly);
     const { name } = await parseTorrent(uri);

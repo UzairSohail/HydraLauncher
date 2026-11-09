@@ -131,6 +131,9 @@ function fixture() {
     "./range-download-state": { configureRangeStateDirectory: () => {} },
     "../system-path": { SystemPath: { getPath: () => os.tmpdir() } },
     "./download/debrid-files": { isDebridPendingError: () => false },
+    "./download/debrid-remote-progress": {
+      getDebridRemoteProgress: async () => null,
+    },
     "@shared": { Downloader },
     "../../types": downloadContract,
     "./types": downloaderTypes,

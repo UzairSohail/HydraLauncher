@@ -75,6 +75,8 @@ export enum DownloadError {
   NotCachedOnPremiumize = "download_error_not_cached_on_premiumize",
   PremiumizeTransferStarted = "download_error_premiumize_transfer_started",
   NotCachedOnAllDebrid = "download_error_not_cached_on_alldebrid",
+  AllDebridTorrentNotReady = "download_error_alldebrid_torrent_not_ready",
+  TorrentRequiresDebrid = "download_error_torrent_requires_debrid",
   PremiumizeAccountNotAuthorized = "download_error_premiumize_account_not_authorized",
   AllDebridAccountNotAuthorized = "download_error_alldebrid_account_not_authorized",
   PremiumizeRateLimitExceeded = "download_error_premiumize_rate_limit_exceeded",
