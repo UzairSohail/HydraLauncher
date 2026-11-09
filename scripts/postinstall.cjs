@@ -35,7 +35,23 @@ const downloadLudusavi = async () => {
 
   console.log(`Downloading ${file}...`);
 
-  const response = await axios.get(downloadUrl, { responseType: "stream" });
+  // GitHub release downloads sometimes answer 5xx; retry a few times.
+  let response;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      response = await axios.get(downloadUrl, {
+        responseType: "stream",
+        timeout: 120_000,
+      });
+      break;
+    } catch (error) {
+      if (attempt >= 4) throw error;
+      console.log(
+        `Download failed (${error.message}), retrying in ${attempt * 10}s...`
+      );
+      await new Promise((resolve) => setTimeout(resolve, attempt * 10_000));
+    }
+  }
 
   const stream = response.data.pipe(fs.createWriteStream(file));
 
@@ -67,4 +83,7 @@ const downloadLudusavi = async () => {
   });
 };
 
-downloadLudusavi();
+downloadLudusavi().catch((error) => {
+  console.error(error.message);
+  process.exit(1);
+});
