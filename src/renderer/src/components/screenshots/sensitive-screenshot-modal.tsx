@@ -7,8 +7,6 @@ import { ConfirmationModal } from "../confirmation-modal/confirmation-modal";
 import { setUserPreferences } from "@renderer/features";
 import { useAppDispatch } from "@renderer/hooks";
 import { logger } from "@renderer/logger";
-import { levelDBService } from "@renderer/services/leveldb.service";
-import type { UserPreferences } from "@types";
 
 interface SensitiveScreenshotModalProps {
   visible: boolean;
@@ -36,12 +34,8 @@ export function SensitiveScreenshotModal({
       await window.electron.updateUserPreferences({
         showSensitiveScreenshots: true,
       });
-      const preferences = await levelDBService.get(
-        "userPreferences",
-        null,
-        "json"
-      );
-      dispatch(setUserPreferences(preferences as UserPreferences | null));
+      const preferences = await window.electron.getUserPreferences();
+      dispatch(setUserPreferences(preferences));
     } catch (error) {
       logger.error(
         "Failed to save the sensitive screenshots preference",
