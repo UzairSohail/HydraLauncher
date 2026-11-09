@@ -1,19 +1,15 @@
 name: Release
 
-# Builds Windows and Linux on every push to master (or by hand) and publishes
+# Builds Windows and Linux from master and publishes
 # them as the only release in the repository. Builds upload straight to a
 # draft release (no workflow artifacts, so the Actions storage quota is not
 # used). Once both are in, the draft is published and every older release,
 # its tag and any leftover workflow artifacts are deleted, so the Releases
 # page only ever holds the latest version. Pull requests do not build.
 
+# Runs only when started by hand (Actions > Release > Run workflow), so merges
+# don't spend the account's Actions minutes.
 on:
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - "**.md"
-      - "docs/**"
   workflow_dispatch:
 
 concurrency:

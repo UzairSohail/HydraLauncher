@@ -4,7 +4,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-on: pull_request
+# Started by hand only; it takes ~20 minutes and the account has limited
+# Actions minutes.
+on: workflow_dispatch
 
 jobs:
   lint:
