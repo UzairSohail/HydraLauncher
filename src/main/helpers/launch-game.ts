@@ -1,4 +1,5 @@
 import { shell } from "electron";
+import { PersonalCloud } from "@main/services/personal-cloud";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -969,6 +970,14 @@ const launchGameWithCloudSaveChecks = async (
         // Auth or save preparation failures must never fall through to a raw launch.
         throw error;
       }
+    });
+  }
+
+  // Pulls a newer save from the user's own cloud. It never blocks the launch.
+  if (launchGameRecord) {
+    await PersonalCloud.syncBeforeLaunch({
+      ...launchGameRecord,
+      executablePath: parsedPath,
     });
   }
 

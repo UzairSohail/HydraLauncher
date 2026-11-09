@@ -253,6 +253,12 @@ function fixture() {
             },
           },
         },
+        "./personal-cloud": {
+          PersonalCloud: {
+            onGameStarted: async () => {},
+            onGameClosed: async () => null,
+          },
+        },
         "node:path": {},
         "./wine": {},
         "./native-addon": {},

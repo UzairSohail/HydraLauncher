@@ -1168,6 +1168,7 @@ export * from "./cloud-save.types";
 export * from "./souvenir.types";
 export * from "./screenshot.types";
 export * from "./recompilation.types";
+export * from "./personal-cloud.types";
 
 export type ExtractionFailure =
   | { reason: "unsupported-format"; format: string }

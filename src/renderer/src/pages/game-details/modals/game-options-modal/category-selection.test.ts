@@ -161,6 +161,22 @@ describe("game options category selection", () => {
     );
   });
 
+  it("hides Hydra Cloud categories behind the paywall", () => {
+    assert.deepEqual(
+      getCloudGameSettingsCategories(
+        {
+          cloudSaveAccessAction: "paywall",
+          showCloudSaveV2Settings: true,
+          showLegacyCloudSaveSettings: true,
+          showEpicCloudSettings: true,
+          showDownloadSettings: true,
+        },
+        "active"
+      ),
+      ["epic_cloud"]
+    );
+  });
+
   it("returns to General when the Epic category is no longer available", () => {
     assert.equal(
       getAvailableGameSettingsCategory("epic_cloud", {

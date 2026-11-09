@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import type {
   SystemPowerAction,
   GameShop,
+  PersonalCloudSyncEvent,
   DownloadProgress,
   UserPreferences,
   ScreenshotInputStatus,
@@ -351,6 +352,46 @@ contextBridge.exposeInMainWorld("electron", {
       shop,
       rawPath
     ) as Promise<void>,
+  /* Personal cloud saves (Cloud Save Manager) */
+  getPersonalCloudStatus: () => ipcRenderer.invoke("getPersonalCloudStatus"),
+  signInPersonalCloud: () => ipcRenderer.invoke("signInPersonalCloud"),
+  setPersonalCloudPaused: (paused: boolean) =>
+    ipcRenderer.invoke("setPersonalCloudPaused", paused),
+  getPersonalCloudGameState: (shop: GameShop, objectId: string) =>
+    ipcRenderer.invoke("getPersonalCloudGameState", shop, objectId),
+  syncPersonalCloudGame: (shop: GameShop, objectId: string) =>
+    ipcRenderer.invoke("syncPersonalCloudGame", shop, objectId),
+  forcePersonalCloudUpload: (shop: GameShop, objectId: string) =>
+    ipcRenderer.invoke("forcePersonalCloudUpload", shop, objectId),
+  forcePersonalCloudDownload: (shop: GameShop, objectId: string) =>
+    ipcRenderer.invoke("forcePersonalCloudDownload", shop, objectId),
+  restorePersonalCloudVersion: (
+    shop: GameShop,
+    objectId: string,
+    versionId: string
+  ) =>
+    ipcRenderer.invoke(
+      "restorePersonalCloudVersion",
+      shop,
+      objectId,
+      versionId
+    ),
+  deletePersonalCloudVersion: (
+    shop: GameShop,
+    objectId: string,
+    versionId: string
+  ) =>
+    ipcRenderer.invoke("deletePersonalCloudVersion", shop, objectId, versionId),
+  choosePersonalCloudSaveFolder: (shop: GameShop, objectId: string) =>
+    ipcRenderer.invoke("choosePersonalCloudSaveFolder", shop, objectId),
+  onPersonalCloudSync: (callback: (event: PersonalCloudSyncEvent) => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      payload: PersonalCloudSyncEvent
+    ) => callback(payload);
+    ipcRenderer.on("on-personal-cloud-sync", listener);
+    return () => ipcRenderer.removeListener("on-personal-cloud-sync", listener);
+  },
   setCloudSaveAutomaticSyncEnabled: (
     objectId: string,
     shop: GameShop,

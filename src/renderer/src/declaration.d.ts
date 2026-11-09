@@ -144,6 +144,11 @@ import type {
   ResolveEpicCloudSaveConflictPayload,
   EpicLaunchOptions,
   EpicLinuxCompatibility,
+  PersonalCloudGameState,
+  PersonalCloudStatus,
+  PersonalCloudSyncEvent,
+  PersonalCloudSyncResult,
+  PersonalCloudVersion,
 } from "@types";
 import type { AxiosProgressEvent } from "axios";
 
@@ -265,6 +270,43 @@ declare global {
       shop: GameShop,
       rawPath: string
     ) => Promise<void>;
+    /* Personal cloud saves (Cloud Save Manager) */
+    getPersonalCloudStatus: () => Promise<PersonalCloudStatus>;
+    signInPersonalCloud: () => Promise<PersonalCloudStatus>;
+    setPersonalCloudPaused: (paused: boolean) => Promise<PersonalCloudStatus>;
+    getPersonalCloudGameState: (
+      shop: GameShop,
+      objectId: string
+    ) => Promise<PersonalCloudGameState>;
+    syncPersonalCloudGame: (
+      shop: GameShop,
+      objectId: string
+    ) => Promise<PersonalCloudSyncResult>;
+    forcePersonalCloudUpload: (
+      shop: GameShop,
+      objectId: string
+    ) => Promise<PersonalCloudVersion>;
+    forcePersonalCloudDownload: (
+      shop: GameShop,
+      objectId: string
+    ) => Promise<PersonalCloudVersion>;
+    restorePersonalCloudVersion: (
+      shop: GameShop,
+      objectId: string,
+      versionId: string
+    ) => Promise<PersonalCloudVersion>;
+    deletePersonalCloudVersion: (
+      shop: GameShop,
+      objectId: string,
+      versionId: string
+    ) => Promise<void>;
+    choosePersonalCloudSaveFolder: (
+      shop: GameShop,
+      objectId: string
+    ) => Promise<PersonalCloudSyncResult | null>;
+    onPersonalCloudSync: (
+      callback: (event: PersonalCloudSyncEvent) => void
+    ) => () => void;
     setCloudSaveAutomaticSyncEnabled: (
       objectId: string,
       shop: GameShop,
