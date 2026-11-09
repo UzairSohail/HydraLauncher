@@ -129,12 +129,11 @@ export function App() {
   const [showAddFriendModal, setShowAddFriendModal] = useState(false);
 
   useEffect(() => {
-    Promise.all([
-      levelDBService.get("userPreferences", null, "json"),
-      updateLibrary(),
-    ]).then(([preferences]) => {
-      dispatch(setUserPreferences(preferences as UserPreferences | null));
-    });
+    Promise.all([window.electron.getUserPreferences(), updateLibrary()]).then(
+      ([preferences]) => {
+        dispatch(setUserPreferences(preferences as UserPreferences | null));
+      }
+    );
   }, [navigate, location.pathname, dispatch, updateLibrary]);
 
   useEffect(() => {
