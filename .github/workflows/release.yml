@@ -1,16 +1,22 @@
 name: Release
 
-env:
-  RELEASE_ARTIFACT_RETENTION_DAYS: 7
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+# Builds Windows and Linux on every push to master (or by hand) and publishes
+# them as the only release in the repository. Older releases, their tags and
+# all workflow artifacts are deleted once the new release is up, so the
+# Releases page only ever holds the latest version. Pull requests do not build.
 
 on:
   push:
     branches:
-      - release/**
+      - master
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -76,6 +82,17 @@ jobs:
           rustup target add x86_64-pc-windows-gnu
           sudo apt-get update && sudo apt-get install -y build-essential cmake ninja-build pkg-config curl zip unzip tar autoconf automake libtool gcc-mingw-w64-x86-64
 
+      # Lets cargo fetch private git dependencies (cloud-save-manager) when a
+      # token with read access is stored as the PRIVATE_REPO_TOKEN secret.
+      - name: Allow private git dependencies
+        shell: bash
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          [ -n "$PRIVATE_REPO_TOKEN" ] || exit 0
+          git config --global url."https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/".insteadOf "https://github.com/"
+          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
+
       - name: Install dependencies
         run: yarn --frozen-lockfile
 
@@ -89,8 +106,7 @@ jobs:
 
       - name: Build Linux
         if: matrix.os == 'ubuntu-latest'
-        run: |
-          yarn build:linux
+        run: yarn build:linux --publish never
         env:
           MAIN_VITE_API_URL: ${{ vars.MAIN_VITE_API_URL }}
           MAIN_VITE_AUTH_URL: ${{ vars.MAIN_VITE_AUTH_URL }}
@@ -107,7 +123,7 @@ jobs:
 
       - name: Build Windows
         if: matrix.os == 'windows-2022'
-        run: yarn build:win
+        run: yarn build:win --publish never
         env:
           MAIN_VITE_API_URL: ${{ vars.MAIN_VITE_API_URL }}
           MAIN_VITE_AUTH_URL: ${{ vars.MAIN_VITE_AUTH_URL }}
@@ -122,44 +138,17 @@ jobs:
           RENDERER_VITE_TORBOX_REFERRAL_CODE: ${{ vars.RENDERER_VITE_TORBOX_REFERRAL_CODE }}
           MAIN_VITE_LAUNCHER_SUBDOMAIN: ${{ vars.MAIN_VITE_LAUNCHER_SUBDOMAIN }}
 
-      - name: Create artifact
+      # Short-lived hand-off to the publish job; deleted again after release.
+      - name: Upload build for release
         uses: actions/upload-artifact@v4
         with:
-          name: Build-${{ matrix.os }}
-          retention-days: ${{ env.RELEASE_ARTIFACT_RETENTION_DAYS }}
+          name: release-${{ matrix.os }}
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
           path: |
-            dist/win-unpacked/**
-            dist/*-portable.exe
-            dist/*.zip
-            dist/*.dmg
-            dist/*.deb
-            dist/*.rpm
-            dist/*.tar.gz
-            dist/*.yml
-            dist/*.blockmap
-
-      - name: Upload build
-        env:
-          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
-          S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
-          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
-          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
-          S3_BUILDS_BUCKET_NAME: ${{ secrets.S3_BUILDS_BUCKET_NAME }}
-          BUILDS_URL: ${{ secrets.BUILDS_URL }}
-          BUILD_WEBHOOK_URL: ${{ secrets.BUILD_WEBHOOK_URL }}
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_ACTOR_ID: ${{ github.actor_id }}
-          BUILD_FLAVOR: release
-        run: node scripts/upload-build.cjs
-
-      - name: Release
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          files: |
             dist/*.exe
             dist/*.zip
-            dist/*.dmg
             dist/*.AppImage
             dist/*.snap
             dist/*.deb
@@ -167,5 +156,66 @@ jobs:
             dist/*.tar.gz
             dist/*.yml
             dist/*.blockmap
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            !dist/builder-debug.yml
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      actions: write
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+
+      - name: Download builds
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+
+      - name: Work out the release tag
+        id: version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      # A rebuild of the same version replaces that release.
+      - name: Remove a release with the same tag
+        run: |
+          gh release delete "${{ steps.version.outputs.tag }}" --yes --cleanup-tag 2>/dev/null || true
+          gh api -X DELETE "repos/$GH_REPO/git/refs/tags/${{ steps.version.outputs.tag }}" 2>/dev/null || true
+
+      - name: Publish release
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" release/* \
+            --target "$GITHUB_SHA" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --notes "Built from ${GITHUB_SHA::7} on $(date -u +%Y-%m-%d)." \
+            --latest
+
+      - name: Delete older releases and their tags
+        run: |
+          gh api --paginate "repos/$GH_REPO/releases" --jq '.[] | [.id, .tag_name] | @tsv' |
+          while IFS=$'\t' read -r id tag; do
+            [ "$tag" = "${{ steps.version.outputs.tag }}" ] && continue
+            echo "Deleting release $tag"
+            gh api -X DELETE "repos/$GH_REPO/releases/$id"
+            gh api -X DELETE "repos/$GH_REPO/git/refs/tags/$tag" || true
+          done
+
+      - name: Delete workflow artifacts
+        if: always()
+        run: |
+          gh api --paginate "repos/$GH_REPO/actions/artifacts" --jq '.artifacts[].id' |
+          while read -r id; do
+            gh api -X DELETE "repos/$GH_REPO/actions/artifacts/$id" || true
+          done
