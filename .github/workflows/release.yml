@@ -1,9 +1,11 @@
 name: Release
 
 # Builds Windows and Linux on every push to master (or by hand) and publishes
-# them as the only release in the repository. Older releases, their tags and
-# all workflow artifacts are deleted once the new release is up, so the
-# Releases page only ever holds the latest version. Pull requests do not build.
+# them as the only release in the repository. Builds upload straight to a
+# draft release (no workflow artifacts, so the Actions storage quota is not
+# used). Once both are in, the draft is published and every older release,
+# its tag and any leftover workflow artifacts are deleted, so the Releases
+# page only ever holds the latest version. Pull requests do not build.
 
 on:
   push:
@@ -19,7 +21,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+
+      - name: Work out the release tag
+        id: version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      # A rebuild of the same version replaces that release.
+      - name: Create a draft release
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh api -X DELETE "repos/$GH_REPO/git/refs/tags/$TAG" 2>/dev/null || true
+          gh release create "$TAG" --draft \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --notes "Built from ${GITHUB_SHA::7} on $(date -u +%Y-%m-%d)."
+
   build:
+    needs: prepare
+
+    permissions:
+      contents: write
+
     strategy:
       matrix:
         os: [windows-2022, ubuntu-latest]
@@ -138,28 +180,28 @@ jobs:
           RENDERER_VITE_TORBOX_REFERRAL_CODE: ${{ vars.RENDERER_VITE_TORBOX_REFERRAL_CODE }}
           MAIN_VITE_LAUNCHER_SUBDOMAIN: ${{ vars.MAIN_VITE_LAUNCHER_SUBDOMAIN }}
 
-      # Short-lived hand-off to the publish job; deleted again after release.
-      - name: Upload build for release
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-${{ matrix.os }}
-          retention-days: 1
-          compression-level: 0
-          if-no-files-found: error
-          path: |
-            dist/*.exe
-            dist/*.zip
-            dist/*.AppImage
-            dist/*.snap
-            dist/*.deb
-            dist/*.rpm
-            dist/*.tar.gz
-            dist/*.yml
-            dist/*.blockmap
-            !dist/builder-debug.yml
+      - name: Upload build to the draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          shopt -s nullglob
+          files=(dist/*.exe dist/*.zip dist/*.AppImage dist/*.snap dist/*.deb \
+            dist/*.rpm dist/*.tar.gz dist/*.yml dist/*.blockmap)
+          upload=()
+          for f in "${files[@]}"; do
+            [ "$(basename "$f")" = "builder-debug.yml" ] || upload+=("$f")
+          done
+          if [ ${#upload[@]} -eq 0 ]; then
+            echo "No build files found in dist/"
+            exit 1
+          fi
+          gh release upload "$TAG" "${upload[@]}" --clobber
 
   publish:
-    needs: build
+    needs: [prepare, build]
     runs-on: ubuntu-latest
 
     permissions:
@@ -169,51 +211,23 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.prepare.outputs.tag }}
 
     steps:
-      - name: Check out Git repository
-        uses: actions/checkout@v4
-
-      - name: Download builds
-        uses: actions/download-artifact@v4
-        with:
-          pattern: release-*
-          path: release
-          merge-multiple: true
-
-      - name: Work out the release tag
-        id: version
-        run: |
-          version="$(node -p "require('./package.json').version")"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=v$version" >> "$GITHUB_OUTPUT"
-
-      # A rebuild of the same version replaces that release.
-      - name: Remove a release with the same tag
-        run: |
-          gh release delete "${{ steps.version.outputs.tag }}" --yes --cleanup-tag 2>/dev/null || true
-          gh api -X DELETE "repos/$GH_REPO/git/refs/tags/${{ steps.version.outputs.tag }}" 2>/dev/null || true
-
       - name: Publish release
-        run: |
-          gh release create "${{ steps.version.outputs.tag }}" release/* \
-            --target "$GITHUB_SHA" \
-            --title "${{ steps.version.outputs.tag }}" \
-            --notes "Built from ${GITHUB_SHA::7} on $(date -u +%Y-%m-%d)." \
-            --latest
+        run: gh release edit "$TAG" --draft=false --latest
 
       - name: Delete older releases and their tags
         run: |
           gh api --paginate "repos/$GH_REPO/releases" --jq '.[] | [.id, .tag_name] | @tsv' |
           while IFS=$'\t' read -r id tag; do
-            [ "$tag" = "${{ steps.version.outputs.tag }}" ] && continue
+            [ "$tag" = "$TAG" ] && continue
             echo "Deleting release $tag"
             gh api -X DELETE "repos/$GH_REPO/releases/$id"
             gh api -X DELETE "repos/$GH_REPO/git/refs/tags/$tag" || true
           done
 
       - name: Delete workflow artifacts
-        if: always()
         run: |
           gh api --paginate "repos/$GH_REPO/actions/artifacts" --jq '.artifacts[].id' |
           while read -r id; do
