@@ -4,7 +4,7 @@ import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 
 import { Button, CheckboxField } from "@renderer/components";
 import { useToast } from "@renderer/hooks";
-import type { SettingsSyncStatus } from "@types";
+import type { SettingsSyncError, SettingsSyncStatus } from "@types";
 
 import {
   SettingsIntegrationCard,
@@ -17,6 +17,7 @@ export function SettingsSync() {
   const { showErrorToast } = useToast();
   const [status, setStatus] = useState<SettingsSyncStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSigningIn, setIsSigningIn] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -33,11 +34,33 @@ export function SettingsSync() {
     return window.electron.onSettingsSyncStatus(setStatus);
   }, [refresh]);
 
+  const describeError = (error: SettingsSyncError) =>
+    t(`settings_sync_reason_${error.reason}`, { detail: error.detail });
+
   const syncNow = async () => {
     const next = await window.electron.syncSettingsNow();
     setStatus(next);
-    if (next.lastError) showErrorToast(t("settings_sync_failed"));
+    if (next.lastError) {
+      showErrorToast(t("settings_sync_failed"), describeError(next.lastError));
+    }
   };
+
+  /** Replaces a sign-in Google won't accept; signing in also runs a sync. */
+  const signInAgain = async () => {
+    setIsSigningIn(true);
+    try {
+      await window.electron.signInPersonalCloud();
+    } catch {
+      showErrorToast(t("sign_in_failed"));
+    } finally {
+      setIsSigningIn(false);
+      void refresh();
+    }
+  };
+
+  const needsSignIn =
+    status?.lastError?.reason === "sign_in_expired" ||
+    status?.lastError?.reason === "sign_in_rejected";
 
   const toggleEnabled = async () => {
     if (!status) return;
@@ -69,9 +92,15 @@ export function SettingsSync() {
       loading={isLoading}
       actions={
         status?.signedIn && status.enabled ? (
-          <Button theme="outline" onClick={syncNow} disabled={status.syncing}>
-            {t("sync_now")}
-          </Button>
+          needsSignIn ? (
+            <Button onClick={signInAgain} disabled={isSigningIn}>
+              {isSigningIn ? t("signing_in") : t("settings_sync_sign_in_again")}
+            </Button>
+          ) : (
+            <Button theme="outline" onClick={syncNow} disabled={status.syncing}>
+              {t("sync_now")}
+            </Button>
+          )
         ) : undefined
       }
     >
@@ -85,6 +114,11 @@ export function SettingsSync() {
             checked={status.enabled}
             onChange={toggleEnabled}
           />
+          {status.enabled && status.lastError && !status.syncing && (
+            <p className="settings-integration-card__meta settings-integration-card__meta--error">
+              {describeError(status.lastError)}
+            </p>
+          )}
           {status.enabled && (
             <SettingsIntegrationLastSynced lastSyncedAt={lastSyncedAt} />
           )}

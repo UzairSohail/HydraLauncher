@@ -18,6 +18,7 @@ import {
   pickSyncedSecrets,
   toSettingsDocument,
 } from "./settings-document.js";
+import { describeSettingsSyncError } from "./sync-error.js";
 
 describe("settings sync merge", () => {
   it("keeps the newer change per key, not per file", () => {
@@ -163,5 +164,51 @@ describe("settings sync document", () => {
     assert.deepEqual(result.incoming.preferences, ["language"]);
     assert.deepEqual(result.incoming.secrets, ["torBoxApiToken"]);
     assert.equal(result.shouldPush, false);
+  });
+});
+
+describe("settings sync errors", () => {
+  it("names a build without Google sign-in details", () => {
+    const error = new Error(
+      "this build has no sign-in details, so use --client with Google's .json file"
+    );
+    assert.equal(describeSettingsSyncError(error).reason, "no_client");
+  });
+
+  it("tells an expired sign-in from a rejected one", () => {
+    assert.equal(
+      describeSettingsSyncError(
+        new Error(
+          "sign in again with the auth command: Google no longer accepts this sign-in"
+        )
+      ).reason,
+      "sign_in_expired"
+    );
+    assert.equal(
+      describeSettingsSyncError(
+        new Error("Google Drive refused the request: sign-in returned 401")
+      ).reason,
+      "sign_in_rejected"
+    );
+  });
+
+  it("keeps only Google's own message from a Drive error body", () => {
+    const error = new Error(
+      'Google Drive refused the request: 403: {"error": {"code": 403, "message": "Google Drive API has not been used in project 123", "errors": []}}'
+    );
+    assert.deepEqual(describeSettingsSyncError(error), {
+      reason: "drive_refused",
+      detail: "Google Drive API has not been used in project 123",
+    });
+  });
+
+  it("reports a damaged settings file", () => {
+    let parseError: unknown;
+    try {
+      JSON.parse("{");
+    } catch (error) {
+      parseError = error;
+    }
+    assert.equal(describeSettingsSyncError(parseError).reason, "bad_file");
   });
 });

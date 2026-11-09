@@ -142,6 +142,11 @@
   &__meta {
     color: globals.$body-color;
     font-size: globals.$small-font-size;
+
+    &--error {
+      color: globals.$warning-color;
+      overflow-wrap: anywhere;
+    }
   }
 
   &__progress {
