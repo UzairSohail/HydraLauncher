@@ -91,7 +91,7 @@ export function BehaviorSection({ className }: Readonly<BehaviorSectionProps>) {
       {
         id: "prefer-quit-instead-of-hiding",
         focusId: BEHAVIOR_ITEM_FOCUS_IDS.preferQuitInsteadOfHiding,
-        label: "Don't hide Hydra when closing",
+        label: "Don't hide Nacho when closing",
         checked: form.preferQuitInsteadOfHiding,
         disabled: false,
         onChange: (checked: boolean) =>
@@ -100,7 +100,7 @@ export function BehaviorSection({ className }: Readonly<BehaviorSectionProps>) {
       {
         id: "hide-to-tray-on-game-start",
         focusId: BEHAVIOR_ITEM_FOCUS_IDS.hideToTrayOnGameStart,
-        label: "Hide Hydra to tray on game startup",
+        label: "Hide Nacho to tray on game startup",
         checked: form.hideToTrayOnGameStart,
         disabled: false,
         onChange: (checked: boolean) =>
@@ -111,7 +111,7 @@ export function BehaviorSection({ className }: Readonly<BehaviorSectionProps>) {
             {
               id: "launch-with-system",
               focusId: BEHAVIOR_ITEM_FOCUS_IDS.runAtStartup,
-              label: "Launch Hydra on system start-up",
+              label: "Launch Nacho on system start-up",
               checked: form.runAtStartup,
               disabled: false,
               onChange: (checked: boolean) =>
@@ -126,7 +126,7 @@ export function BehaviorSection({ className }: Readonly<BehaviorSectionProps>) {
             {
               id: "launch-minimized",
               focusId: BEHAVIOR_ITEM_FOCUS_IDS.startMinimized,
-              label: "Launch Hydra minimized",
+              label: "Launch Nacho minimized",
               checked: form.runAtStartup && form.startMinimized,
               disabled: !form.runAtStartup,
               onChange: (checked: boolean) =>
@@ -143,7 +143,7 @@ export function BehaviorSection({ className }: Readonly<BehaviorSectionProps>) {
       {
         id: "launch-to-library-page",
         focusId: BEHAVIOR_ITEM_FOCUS_IDS.launchToLibraryPage,
-        label: "Launch Hydra in the Library page",
+        label: "Launch Nacho in the Library page",
         checked: form.launchToLibraryPage,
         disabled: false,
         onChange: (checked: boolean) =>

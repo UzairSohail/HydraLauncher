@@ -1,7 +1,7 @@
 {
   "name": "hydralauncher",
   "version": "4.4.0",
-  "description": "Hydra",
+  "description": "Nacho Launcher",
   "main": "./out/main/index.js",
   "author": "Los Broxas",
   "repository": {

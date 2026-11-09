@@ -1317,7 +1317,7 @@ export class WindowManager {
     const connectionWindow = new BrowserWindow({
       width: layout.width,
       height: layout.height,
-      title: "Hydra",
+      title: "Nacho",
       backgroundColor: "#1c1c1c",
       parent: parentWindow,
       modal: true,
@@ -1672,7 +1672,7 @@ export class WindowManager {
       tray.popUpContextMenu(contextMenu);
     };
 
-    tray.setToolTip("Hydra Launcher");
+    tray.setToolTip("Nacho Launcher");
 
     if (process.platform === "win32") {
       await updateSystemTray();
