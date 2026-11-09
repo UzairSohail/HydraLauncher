@@ -2,6 +2,7 @@ import axios, { AxiosInstance, InternalAxiosRequestConfig } from "axios";
 import parseTorrent from "parse-torrent";
 import type { AllDebridUser } from "@types";
 import { appVersion } from "@main/constants";
+import { DownloadError } from "@shared";
 import { logger } from "@main/services";
 
 interface AllDebridError {
@@ -44,6 +45,7 @@ interface AllDebridMagnet {
   statusCode?: number;
   filename?: string;
   size?: number;
+  downloaded?: number;
 }
 
 type AllDebridMagnetsPayload =
@@ -471,7 +473,8 @@ export class AllDebridClient {
       logger.warn(
         `[AllDebrid] Magnet id=${magnetId} is not ready yet: ${magnetStatus?.status} (code=${statusCode}). Torrent is still processing on AllDebrid servers.`
       );
-      return null;
+      // An uncached magnet is still downloading on AllDebrid; wait for it.
+      throw new Error(DownloadError.AllDebridTorrentNotReady);
     }
 
     const links = await this.getMagnetFiles(magnetId);
@@ -512,6 +515,18 @@ export class AllDebridClient {
   static async getDownloadUrl(uri: string) {
     const info = await this.getDownloadInfo(uri);
     return info?.url ?? null;
+  }
+
+  /** Progress (0..1) of a magnet AllDebrid is still downloading, if known. */
+  static async getRemoteProgress(uri: string): Promise<number | null> {
+    const infoHash = this.getMagnetInfoHash(uri);
+    if (!infoHash) return null;
+    const magnets = await this.getMagnetStatus();
+    const magnet = magnets.find((m) => m.hash.toLowerCase() === infoHash);
+    if (!magnet) return null;
+    if (magnet.statusCode === 4) return 1;
+    if (!magnet.size || magnet.downloaded === undefined) return null;
+    return Math.min(1, Math.max(0, magnet.downloaded / magnet.size));
   }
 
   static async isCached(uri: string) {

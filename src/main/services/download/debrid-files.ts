@@ -11,6 +11,8 @@ const pendingErrors = new Map<Downloader, ReadonlySet<string>>([
       DownloadError.RealDebridLinksNotReady,
     ]),
   ],
+  [Downloader.Premiumize, new Set([DownloadError.PremiumizeTransferStarted])],
+  [Downloader.AllDebrid, new Set([DownloadError.AllDebridTorrentNotReady])],
 ]);
 
 export function isDebridPendingError(

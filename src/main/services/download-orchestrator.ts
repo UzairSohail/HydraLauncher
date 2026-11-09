@@ -2,6 +2,7 @@ import { downloadsSublevel, levelKeys } from "@main/level";
 import { withDownloadActivation } from "./download/download-activation";
 import { DownloadManager } from "./download/download-manager";
 import { isDebridPendingError } from "./download/debrid-files";
+import { getDebridRemoteProgress } from "./download/debrid-remote-progress";
 import { WindowManager } from "./window-manager";
 import { logger } from "./logger";
 import { Downloader } from "@shared";
@@ -72,8 +73,10 @@ function withInsertedId(ids: string[], id: string, targetIndex?: number) {
 
 const NO_INTERNET_GRACE_MS = 15000;
 const RECONNECT_DEBOUNCE_MS = 2000;
-const DEBRID_PREPARATION_WINDOW_MS = 5 * 60 * 1000;
-const DEBRID_READINESS_POLL_MS = 5000;
+// Uncached magnets have to finish downloading on the debrid provider before
+// Hydra can fetch them, which can take hours for large or poorly seeded games.
+const DEBRID_PREPARATION_WINDOW_MS = 48 * 60 * 60 * 1000;
+const DEBRID_READINESS_POLL_MS = 15_000;
 
 export class DownloadOrchestrator {
   private static epicActivationTail: Promise<unknown> = Promise.resolve();
@@ -303,6 +306,7 @@ export class DownloadOrchestrator {
     const activeDownload: Download = {
       ...download,
       awaitingDebrid: false,
+      debridRemoteProgress: undefined,
       debridAutoResume: false,
       debridQueueOnly: undefined,
       debridQueuePosition: undefined,
@@ -363,6 +367,7 @@ export class DownloadOrchestrator {
           status: "error",
           queued: false,
           awaitingDebrid: false,
+          debridRemoteProgress: undefined,
           debridAutoResume: false,
           debridQueueOnly: undefined,
           debridQueuePosition: undefined,
@@ -723,6 +728,7 @@ export class DownloadOrchestrator {
         status: "error",
         queued: false,
         awaitingDebrid: false,
+        debridRemoteProgress: undefined,
         debridAutoResume: false,
         debridQueueOnly: undefined,
         debridQueuePosition: undefined,
@@ -962,6 +968,7 @@ export class DownloadOrchestrator {
       {
         ...download,
         awaitingDebrid: false,
+        debridRemoteProgress: undefined,
         debridAutoResume: false,
         debridQueueOnly: undefined,
         debridQueuePosition: undefined,
@@ -1039,6 +1046,7 @@ export class DownloadOrchestrator {
       ...current,
       realDebridTorrentId: download.realDebridTorrentId,
       awaitingDebrid: false,
+      debridRemoteProgress: undefined,
       debridAutoResume: false,
       debridQueueOnly: undefined,
       debridPreparationDeadline: undefined,
@@ -1078,6 +1086,27 @@ export class DownloadOrchestrator {
       await this.getAllDownloads()
     );
     WindowManager.sendDownloadsUpdated();
+  }
+
+  private static async saveDebridRemoteProgress(
+    download: Download,
+    preparation: { isCurrent: () => boolean; signal: AbortSignal }
+  ) {
+    const progress = await getDebridRemoteProgress(
+      download,
+      preparation.signal
+    );
+    if (!preparation.isCurrent()) return;
+    const current = await this.getDownload(download.shop, download.objectId);
+    if (!preparation.isCurrent() || !current?.debridAutoResume) return;
+    await downloadsSublevel.put(getGameKey(download), {
+      ...current,
+      realDebridTorrentId:
+        download.realDebridTorrentId ?? current.realDebridTorrentId,
+      debridRemoteProgress: progress ?? current.debridRemoteProgress,
+    });
+    if (progress !== null && progress !== current.debridRemoteProgress)
+      WindowManager.sendDownloadsUpdated();
   }
 
   static async pollAwaitingDebridDownloads(now = Date.now()) {
@@ -1138,10 +1167,13 @@ export class DownloadOrchestrator {
           );
           if (!preparation.isCurrent() || !current?.debridAutoResume) return;
           // Preparation can discover the cloud torrent ID before its files.
-          await downloadsSublevel.put(key, {
-            ...current,
-            realDebridTorrentId: download.realDebridTorrentId,
-          });
+          await this.saveDebridRemoteProgress(
+            {
+              ...current,
+              realDebridTorrentId: download.realDebridTorrentId,
+            },
+            preparation
+          );
           return;
         }
         const activate = withDownloadActivation(() =>
@@ -1158,7 +1190,15 @@ export class DownloadOrchestrator {
           await this.expireDebridPreparation(download);
           return;
         }
-        if (isDebridPendingError(error, download.downloader)) return;
+        if (isDebridPendingError(error, download.downloader)) {
+          const current = await this.getDownload(
+            download.shop,
+            download.objectId
+          );
+          if (preparation.isCurrent() && current?.debridAutoResume)
+            await this.saveDebridRemoteProgress(current, preparation);
+          return;
+        }
         await this.saveDebridPreparationError(download, preparation.isCurrent);
         logger.error("Failed to prepare pending debrid download", error);
       } finally {
@@ -1231,6 +1271,7 @@ export class DownloadOrchestrator {
     const readyDownload = {
       ...resumingDownload,
       awaitingDebrid: false,
+      debridRemoteProgress: undefined,
     };
 
     return withDownloadActivation(() =>
@@ -1341,6 +1382,7 @@ export class DownloadOrchestrator {
       shouldSeed: false,
       extracting: false,
       awaitingDebrid: false,
+      debridRemoteProgress: undefined,
       debridAutoResume: false,
       debridQueueOnly: undefined,
       debridQueuePosition: undefined,

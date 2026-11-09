@@ -161,6 +161,8 @@ export interface Download {
   realDebridTorrentId?: string;
   awaitingDebrid?: boolean;
   debridAutoResume?: boolean;
+  /** How far the debrid provider has got caching an uncached magnet (0..1). */
+  debridRemoteProgress?: number;
   debridQueueOnly?: boolean;
   debridQueuePosition?: number;
   debridPreparationDeadline?: number;

@@ -478,6 +478,17 @@ export class RealDebridClient {
     return torrent.id;
   }
 
+  /** Progress (0..1) of a torrent Real-Debrid is still downloading, if known. */
+  static async getRemoteProgress(
+    torrentId: string,
+    signal?: AbortSignal
+  ): Promise<number | null> {
+    const info = await this.getTorrentInfo(torrentId, signal);
+    if (info.status === "downloaded") return 1;
+    if (typeof info.progress !== "number") return null;
+    return Math.min(1, Math.max(0, info.progress / 100));
+  }
+
   public static async getDownloadUrl(uri: string, signal?: AbortSignal) {
     const entries = await this.getDownloadEntries(uri, undefined, signal);
     const first = entries?.[0];

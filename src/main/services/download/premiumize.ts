@@ -205,6 +205,19 @@ export class PremiumizeClient {
     return response.data.transfers ?? [];
   }
 
+  /** Progress (0..1) of a transfer Premiumize is still downloading, if known. */
+  static async getRemoteProgress(uri: string): Promise<number | null> {
+    const infoHash = this.getMagnetInfoHash(uri)?.toLowerCase();
+    const transfers = await this.listTransfers();
+    const match = transfers.find(
+      (t) =>
+        t.src === uri ||
+        (infoHash !== undefined && t.src?.toLowerCase().includes(infoHash))
+    );
+    if (!match || typeof match.progress !== "number") return null;
+    return Math.min(1, Math.max(0, match.progress));
+  }
+
   static async clearFinishedTransfers(): Promise<void> {
     const response = await this.instance.post<PremiumizeBaseResponse>(
       "/transfer/clearfinished",
@@ -458,18 +471,16 @@ export class PremiumizeClient {
   private static async startTransferInBackground(
     uri: string
   ): Promise<boolean> {
-    const created = await this.createTransfer(uri);
-    if (created?.id) {
-      logger.log(
-        `[Premiumize] Transfer started in background (id=${created.id}). User should retry download later.`
-      );
+    // Check first so that polling an uncached magnet never queues duplicates.
+    if (await this.hasRunnableTransfer(uri)) {
+      logger.log(`[Premiumize] Transfer is still running on Premiumize.`);
       return true;
     }
 
-    const hasExistingTransfer = await this.hasRunnableTransfer(uri);
-    if (hasExistingTransfer) {
+    const created = await this.createTransfer(uri);
+    if (created?.id) {
       logger.log(
-        `[Premiumize] Existing transfer found. User should retry download later.`
+        `[Premiumize] Transfer started in background (id=${created.id}).`
       );
       return true;
     }

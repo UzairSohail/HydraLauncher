@@ -202,6 +202,8 @@ export const formatName = pipe<string>(
 
 const realDebridHosts = ["https://1fichier.com", "https://mediafire.com"];
 
+export { isBlockedTorrentDownload } from "./debrid-only";
+
 export const getDownloadersForUri = (uri: string) => {
   if (uri.startsWith("https://gofile.io")) return [Downloader.Gofile];
 
@@ -234,9 +236,9 @@ export const getDownloadersForUri = (uri: string) => {
   if (realDebridHosts.some((host) => uri.startsWith(host)))
     return [Downloader.RealDebrid];
 
+  // Magnets are only ever downloaded through a debrid provider, never peer to peer.
   if (uri.startsWith("magnet:")) {
     return [
-      Downloader.Torrent,
       Downloader.Hydra,
       Downloader.TorBox,
       Downloader.RealDebrid,
