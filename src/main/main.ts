@@ -42,6 +42,7 @@ import {
   getUserPreferences,
   migratePreferenceSecrets,
 } from "./services/user-preferences";
+import { SettingsSync } from "./services/settings-sync";
 import { getDirSize } from "./services/download/helpers";
 import { isDebridPendingError } from "./services/download/debrid-files";
 import { GofileApi } from "./services/hosters";
@@ -132,6 +133,7 @@ export const loadState = async () => {
   void watchSteamLibraries();
   void reconcileRecompilationDiscs();
   void syncRetroAchievementsEmulatorCredentials();
+  SettingsSync.start();
 
   await HydraApi.setupApi().then(async () => {
     void ScreenshotInputService.refreshFeatureFlag();

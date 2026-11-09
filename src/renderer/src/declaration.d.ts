@@ -149,6 +149,7 @@ import type {
   PersonalCloudSyncEvent,
   PersonalCloudSyncResult,
   PersonalCloudVersion,
+  SettingsSyncStatus,
 } from "@types";
 import type { AxiosProgressEvent } from "axios";
 
@@ -306,6 +307,12 @@ declare global {
     ) => Promise<PersonalCloudSyncResult | null>;
     onPersonalCloudSync: (
       callback: (event: PersonalCloudSyncEvent) => void
+    ) => () => void;
+    getSettingsSyncStatus: () => Promise<SettingsSyncStatus>;
+    setSettingsSyncEnabled: (enabled: boolean) => Promise<SettingsSyncStatus>;
+    syncSettingsNow: () => Promise<SettingsSyncStatus>;
+    onSettingsSyncStatus: (
+      callback: (status: SettingsSyncStatus) => void
     ) => () => void;
     setCloudSaveAutomaticSyncEnabled: (
       objectId: string,

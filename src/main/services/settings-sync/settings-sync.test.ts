@@ -65,8 +65,9 @@ describe("settings sync merge", () => {
   it("keeps deletions so another device doesn't bring an item back", () => {
     const url = "https://example.com/source.json";
     const pc = recordCollection(
-      recordCollection({}, { [url]: { name: "S", url } }, 1, "pc"),
+      recordCollection({}, { [url]: { name: "S", url } }, [], 1, "pc"),
       {},
+      [url],
       100,
       "pc"
     );
@@ -76,6 +77,15 @@ describe("settings sync merge", () => {
       [url]: { value: { name: "S", url }, updatedAt: 1, deviceId: "laptop" },
     };
     assert.deepEqual(entryValues(mergeSyncEntries(laptop, pc)), {});
+  });
+
+  it("doesn't treat an item that never arrived as deleted", () => {
+    const url = "https://example.com/source.json";
+    const fromCloud = {
+      [url]: { value: { name: "S", url }, updatedAt: 1, deviceId: "laptop" },
+    };
+    const next = recordCollection(fromCloud, {}, [], 100, "pc");
+    assert.equal(next[url].deleted, undefined);
   });
 
   it("re-adding after a deletion wins over the tombstone", () => {

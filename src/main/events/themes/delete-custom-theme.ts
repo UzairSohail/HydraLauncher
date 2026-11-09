@@ -1,4 +1,5 @@
 import { themesSublevel } from "@main/level";
+import { SettingsSync } from "@main/services/settings-sync";
 import { registerEvent } from "../register-event";
 
 const deleteCustomTheme = async (
@@ -6,6 +7,8 @@ const deleteCustomTheme = async (
   themeId: string
 ) => {
   await themesSublevel.del(themeId);
+
+  SettingsSync.scheduleSync();
 };
 
 registerEvent("deleteCustomTheme", deleteCustomTheme);

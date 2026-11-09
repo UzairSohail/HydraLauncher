@@ -1,5 +1,6 @@
 import { HydraApi } from "@main/services";
 import { downloadSourcesSublevel } from "@main/level";
+import { SettingsSync } from "@main/services/settings-sync";
 import { registerEvent } from "../register-event";
 
 const removeDownloadSource = async (
@@ -22,6 +23,8 @@ const removeDownloadSource = async (
   } else if (downloadSourceId) {
     await downloadSourcesSublevel.del(downloadSourceId);
   }
+
+  SettingsSync.scheduleSync();
 };
 
 registerEvent("removeDownloadSource", removeDownloadSource);

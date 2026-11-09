@@ -75,15 +75,20 @@ export const recordLocalValues = <T>(
   return next;
 };
 
-/** Marks keys that disappeared from a keyed collection (download sources, themes). */
+/**
+ * Records a keyed collection (download sources, themes). Only items this
+ * device had last time (`previousKeys`) count as deleted when missing, so an
+ * item that failed to apply here is not mistaken for a deletion.
+ */
 export const recordCollection = <T>(
   entries: SyncEntries<T>,
   items: Record<string, T>,
+  previousKeys: readonly string[],
   now: number,
   deviceId: string
 ): SyncEntries<T> => {
   const values: Record<string, T | null> = { ...items };
-  for (const key of Object.keys(entries)) {
+  for (const key of previousKeys) {
     if (!Object.hasOwn(items, key)) values[key] = null;
   }
   return recordLocalValues(entries, values, now, deviceId);
