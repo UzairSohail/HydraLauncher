@@ -167,7 +167,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: yarn build:linux --publish never
         env:
-          MAIN_VITE_API_URL: ${{ vars.MAIN_VITE_API_URL }}
+          MAIN_VITE_API_URL: ${{ vars.MAIN_VITE_API_URL || 'https://hydra-api-us-east-1.losbroxas.org' }}
           MAIN_VITE_AUTH_URL: ${{ vars.MAIN_VITE_AUTH_URL }}
           MAIN_VITE_CHECKOUT_URL: ${{ vars.MAIN_VITE_CHECKOUT_URL }}
           MAIN_VITE_NIMBUS_API_URL: ${{ vars.MAIN_VITE_NIMBUS_API_URL }}
@@ -184,7 +184,7 @@ jobs:
         if: matrix.os == 'windows-2022'
         run: yarn build:win --publish never
         env:
-          MAIN_VITE_API_URL: ${{ vars.MAIN_VITE_API_URL }}
+          MAIN_VITE_API_URL: ${{ vars.MAIN_VITE_API_URL || 'https://hydra-api-us-east-1.losbroxas.org' }}
           MAIN_VITE_AUTH_URL: ${{ vars.MAIN_VITE_AUTH_URL }}
           MAIN_VITE_CHECKOUT_URL: ${{ vars.MAIN_VITE_CHECKOUT_URL }}
           MAIN_VITE_NIMBUS_API_URL: ${{ vars.MAIN_VITE_NIMBUS_API_URL }}
