@@ -28,7 +28,9 @@ export const getPersonalCloudLinkInput = (
 
   // ROMs, scripts and shortcuts would match the wrong catalogue entry.
   if (!isWindowsExecutable(exePath)) return null;
-  if (platform === "win32") return { exePath, name, winePrefixPath: null };
+  // Leave winePrefixPath out rather than null: napi rejects null for an
+  // Option<String> field ("Failed to convert JavaScript value `Null`").
+  if (platform === "win32") return { exePath, name };
   if (platform !== "linux" || !winePrefixPath) return null;
   return { exePath, name, winePrefixPath };
 };

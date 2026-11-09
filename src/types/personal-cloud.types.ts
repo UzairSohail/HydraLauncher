@@ -14,7 +14,8 @@ export interface PersonalCloudStatus {
 export interface PersonalCloudLinkInput {
   exePath: string;
   name: string;
-  winePrefixPath?: string | null;
+  /** Omit when there is no prefix: the native binding rejects null here. */
+  winePrefixPath?: string;
 }
 
 export interface PersonalCloudLinkResult {
