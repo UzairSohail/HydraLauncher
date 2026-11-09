@@ -64,6 +64,11 @@ jobs:
     env:
       ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
       ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+      # Built into hydra-native (via Cloud Save Manager) so Google sign-in for
+      # cloud saves and settings sync works without a local client.json.
+      # Anyone with a build can extract these, so keep the repo private.
+      CSM_GOOGLE_CLIENT_ID: ${{ secrets.CSM_GOOGLE_CLIENT_ID }}
+      CSM_GOOGLE_CLIENT_SECRET: ${{ secrets.CSM_GOOGLE_CLIENT_SECRET }}
 
     strategy:
       matrix:
