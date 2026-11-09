@@ -19,7 +19,6 @@ describe("getPersonalCloudLinkInput", () => {
       {
         exePath: game.executablePath,
         name: "Starfall Saga",
-        winePrefixPath: null,
       }
     );
   });
