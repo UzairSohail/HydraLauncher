@@ -17,6 +17,8 @@ export const levelKeys = {
   downloadLayoutState: "downloadLayoutState",
   userPreferences: "userPreferences",
   userPreferenceSecrets: "userPreferenceSecrets", // API keys and tokens, encrypted with safeStorage
+  settingsSync: "settingsSync", // Settings sync state: device id, switch, last sync, entries
+  settingsSyncKey: "settingsSyncKey", // Settings sync key, encrypted with safeStorage
   language: "language",
   screenState: "screenState",
   rpcPassword: "rpcPassword",

@@ -3670,6 +3670,16 @@
     "status_no_saves_yet": "No saves yet",
     "status_waiting_for_first_launch": "Waiting for first launch",
     "status_not_on_this_device": "Not on this device",
-    "status_offline": "Offline"
+    "status_offline": "Offline",
+    "settings_sync_title": "Sync settings (Google Drive)",
+    "settings_sync_description": "Your settings, debrid and other API keys, download sources and themes follow you to every device signed in to the same Google account. Folders, startup and Big Picture options stay on each device. API keys are encrypted before they're uploaded.",
+    "settings_sync_enabled": "Sync settings on this device",
+    "settings_sync_on": "On",
+    "settings_sync_off": "Off",
+    "settings_sync_syncing": "Syncing…",
+    "settings_sync_error": "Couldn't sync",
+    "settings_sync_needs_sign_in": "Sign in to Google above",
+    "settings_sync_failed": "Couldn't sync settings",
+    "settings_sync_last_change_from": "Last change came from {{device}}"
   }
 }

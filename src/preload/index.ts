@@ -7,6 +7,7 @@ import type {
   SystemPowerAction,
   GameShop,
   PersonalCloudSyncEvent,
+  SettingsSyncStatus,
   DownloadProgress,
   UserPreferences,
   ScreenshotInputStatus,
@@ -391,6 +392,20 @@ contextBridge.exposeInMainWorld("electron", {
     ) => callback(payload);
     ipcRenderer.on("on-personal-cloud-sync", listener);
     return () => ipcRenderer.removeListener("on-personal-cloud-sync", listener);
+  },
+  /* Settings sync (Google Drive) */
+  getSettingsSyncStatus: () => ipcRenderer.invoke("getSettingsSyncStatus"),
+  setSettingsSyncEnabled: (enabled: boolean) =>
+    ipcRenderer.invoke("setSettingsSyncEnabled", enabled),
+  syncSettingsNow: () => ipcRenderer.invoke("syncSettingsNow"),
+  onSettingsSyncStatus: (callback: (status: SettingsSyncStatus) => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      payload: SettingsSyncStatus
+    ) => callback(payload);
+    ipcRenderer.on("on-settings-sync-status", listener);
+    return () =>
+      ipcRenderer.removeListener("on-settings-sync-status", listener);
   },
   setCloudSaveAutomaticSyncEnabled: (
     objectId: string,

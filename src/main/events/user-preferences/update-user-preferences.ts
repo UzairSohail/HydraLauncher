@@ -19,6 +19,7 @@ import {
   resolveEmulatorAchievementTracking,
 } from "@main/services/emulators/emulator-achievement-tracking";
 import { HydraApi } from "@main/services/hydra-api";
+import { SettingsSync } from "@main/services/settings-sync";
 import {
   getUserPreferences,
   saveUserPreferences,
@@ -187,8 +188,8 @@ const applyDownloadManagerPreferences = async (
   }
 };
 
-const updateUserPreferences = async (
-  _event: Electron.IpcMainInvokeEvent,
+/** Saves preferences and applies their side effects. Also used by settings sync. */
+export const applyUserPreferences = async (
   preferences: Partial<UserPreferences>
 ) => {
   const userPreferences = await getUserPreferences();
@@ -232,6 +233,14 @@ const updateUserPreferences = async (
   );
 
   await applyDownloadManagerPreferences(preferences);
+};
+
+const updateUserPreferences = async (
+  _event: Electron.IpcMainInvokeEvent,
+  preferences: Partial<UserPreferences>
+) => {
+  await applyUserPreferences(preferences);
+  SettingsSync.scheduleSync();
 };
 
 registerEvent("updateUserPreferences", updateUserPreferences);

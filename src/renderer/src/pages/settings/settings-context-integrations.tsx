@@ -4,6 +4,7 @@ import { SettingsRetroAchievements } from "./settings-retroachievements";
 import { SettingsSteam } from "./settings-steam";
 import { SettingsEpic } from "./settings-epic";
 import { SettingsPersonalCloud } from "./settings-personal-cloud";
+import { SettingsSync } from "./settings-sync";
 
 export function SettingsContextIntegrations() {
   const { t } = useTranslation("settings");
@@ -12,6 +13,7 @@ export function SettingsContextIntegrations() {
     <div className="settings-context-panel">
       <div className="settings-context-panel__group">
         <SettingsPersonalCloud />
+        <SettingsSync />
         <SettingsSteam />
         <SettingsEpic />
         <SettingsRetroAchievements />

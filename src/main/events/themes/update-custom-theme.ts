@@ -1,4 +1,5 @@
 import { themesSublevel } from "@main/level";
+import { SettingsSync } from "@main/services/settings-sync";
 import { registerEvent } from "../register-event";
 import {
   achievementNotificationPresenter,
@@ -26,6 +27,8 @@ const updateCustomTheme = async (
     WindowManager.mainWindow?.webContents.send("on-custom-theme-updated");
     achievementNotificationPresenter.notifyThemeUpdated();
   }
+
+  SettingsSync.scheduleSync();
 };
 
 registerEvent("updateCustomTheme", updateCustomTheme);

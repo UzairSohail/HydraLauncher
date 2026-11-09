@@ -1,6 +1,7 @@
 import { dialog } from "electron";
 
 import { PersonalCloud } from "@main/services/personal-cloud";
+import { SettingsSync } from "@main/services/settings-sync";
 import { WindowManager } from "@main/services/window-manager";
 import type { GameShop } from "@types";
 
@@ -8,7 +9,11 @@ import { registerEvent } from "../register-event";
 
 registerEvent("getPersonalCloudStatus", () => PersonalCloud.status());
 
-registerEvent("signInPersonalCloud", () => PersonalCloud.signIn());
+registerEvent("signInPersonalCloud", async () => {
+  const status = await PersonalCloud.signIn();
+  if (status.signedIn) void SettingsSync.syncNow();
+  return status;
+});
 
 registerEvent(
   "setPersonalCloudPaused",
@@ -78,3 +83,16 @@ registerEvent(
     return PersonalCloud.useSaveFolder(shop, objectId, filePaths[0]);
   }
 );
+
+registerEvent("getSettingsSyncStatus", () => SettingsSync.getStatus());
+
+registerEvent(
+  "setSettingsSyncEnabled",
+  (_event: Electron.IpcMainInvokeEvent, enabled: boolean) =>
+    SettingsSync.setEnabled(enabled)
+);
+
+registerEvent("syncSettingsNow", async () => {
+  await SettingsSync.syncNow();
+  return SettingsSync.getStatus();
+});

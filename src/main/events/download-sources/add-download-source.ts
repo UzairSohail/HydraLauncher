@@ -3,11 +3,10 @@ import { HydraApi } from "@main/services/hydra-api";
 import { downloadSourcesSublevel } from "@main/level";
 import type { DownloadSource } from "@types";
 import { logger } from "@main/services";
+import { SettingsSync } from "@main/services/settings-sync";
 
-const addDownloadSource = async (
-  _event: Electron.IpcMainInvokeEvent,
-  url: string
-) => {
+/** Adds a download source by URL. Also used by settings sync. */
+export const addDownloadSourceByUrl = async (url: string) => {
   try {
     const existingSources = await downloadSourcesSublevel.values().all();
     const urlExists = existingSources.some((source) => source.url === url);
@@ -45,6 +44,15 @@ const addDownloadSource = async (
     logger.error("Failed to add download source:", error);
     throw error;
   }
+};
+
+const addDownloadSource = async (
+  _event: Electron.IpcMainInvokeEvent,
+  url: string
+) => {
+  const downloadSource = await addDownloadSourceByUrl(url);
+  SettingsSync.scheduleSync();
+  return downloadSource;
 };
 
 registerEvent("addDownloadSource", addDownloadSource);
