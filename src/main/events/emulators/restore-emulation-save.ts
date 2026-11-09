@@ -122,7 +122,7 @@ const restoreTargets = async (
   }
 
   if (platform === "wii" && isWiiMetadata(metadata)) {
-    const cardFilePath = path.join(await getDownloadsPath(), "Hydra Wii Saves");
+    const cardFilePath = path.join(await getDownloadsPath(), "Nacho Wii Saves");
     return [{ cardFilePath, cardLabel: "Wii data.bin export" }];
   }
 

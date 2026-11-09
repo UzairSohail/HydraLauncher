@@ -48,7 +48,7 @@ const QUALITY_OPTIONS: DropdownSelectOption<ScreenshotQuality>[] = [
         <span className="screenshot-upload-form__quality-option-label">
           {SCREENSHOT_QUALITY_LABELS.CLOUD}
         </span>
-        <span className="screenshot-upload-form__cloud-badge">Hydra Cloud</span>
+        <span className="screenshot-upload-form__cloud-badge">Nacho Cloud</span>
       </span>
     ),
   },

@@ -341,7 +341,7 @@ export function ContentSettingsSection({
     >
       <SettingsSection
         title="Preferences"
-        description="Choose how Hydra should handle trailers, content warnings, and achievement details."
+        description="Choose how Nacho should handle trailers, content warnings, and achievement details."
       >
         <VerticalFocusGroup regionId={CONTENT_SECTION_REGION_ID} asChild>
           <div className="content-settings-section__content">

@@ -660,8 +660,8 @@ export function AccountPrivacySettingsSection({
       </SettingsSection> */}
 
       <SettingsSection
-        title="Hydra Cloud"
-        description="Check your subscription status and manage your Hydra Cloud plan."
+        title="Nacho Cloud"
+        description="Check your subscription status and manage your Nacho Cloud plan."
       >
         <div className="account-privacy-settings-section__section-content">
           <div className="account-privacy-settings-section__subscription-copy">

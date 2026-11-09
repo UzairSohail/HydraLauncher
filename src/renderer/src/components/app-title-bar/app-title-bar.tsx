@@ -59,7 +59,7 @@ export function AppTitleBar({
       <div className="title-bar__brand">
         {hasCustomFrame && (
           <h4>
-            Hydra
+            Nacho
             {hasActiveSubscription && (
               <span className="title-bar__cloud-text"> Cloud</span>
             )}

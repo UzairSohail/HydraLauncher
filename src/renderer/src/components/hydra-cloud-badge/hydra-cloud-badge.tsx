@@ -8,6 +8,6 @@ export interface HydraCloudBadgeProps {
 
 export function HydraCloudBadge({ className }: Readonly<HydraCloudBadgeProps>) {
   return (
-    <span className={cn("hydra-cloud-badge", className)}>Hydra Cloud</span>
+    <span className={cn("hydra-cloud-badge", className)}>Nacho Cloud</span>
   );
 }

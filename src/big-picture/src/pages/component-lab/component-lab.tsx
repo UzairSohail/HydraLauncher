@@ -262,7 +262,7 @@ export default function ComponentLab() {
       type: "error",
       title: "Unable to sync cloud save",
       message:
-        "Hydra couldn't reach the cloud right now. Try again in a few minutes.",
+        "Nacho couldn't reach the cloud right now. Try again in a few minutes.",
       imageUrl: toastImageUrl ?? undefined,
     });
   }, [presentToastDemo, toastImageUrl]);
@@ -330,7 +330,7 @@ export default function ComponentLab() {
           description="Label, hint, ícones, erro e disabled."
         >
           <div className="catalogue-page__input-row">
-            <Input label="Default" placeholder="Hydra" />
+            <Input label="Default" placeholder="Nacho" />
             <Input
               label="With icons"
               placeholder="Search"
@@ -608,7 +608,7 @@ export default function ComponentLab() {
               Basic: image, title and description.
             </Typography>
             <Typography variant="label">
-              Fallback: no image so the Hydra icon should render.
+              Fallback: no image so the Nacho icon should render.
             </Typography>
             <Typography variant="label">
               Accent and Action: highlighted background with game art.
@@ -715,8 +715,8 @@ export default function ComponentLab() {
               totalBytes={SAMPLE_TOTAL_BYTES}
             />
             <UserDiskItem
-              title="Hydra archive drive"
-              path="D:\\Hydra\\Library"
+              title="Nacho archive drive"
+              path="D:\\Nacho\\Library"
               freeBytes={Math.round(82.6 * 1024 ** 3)}
               totalBytes={2 * 1024 ** 4}
               isSelected

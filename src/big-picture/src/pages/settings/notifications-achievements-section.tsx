@@ -311,7 +311,7 @@ export function NotificationsAchievementsSection({
                           showErrorToast("Notification failed", {
                             ...SETTINGS_TOAST_OPTIONS,
                             message:
-                              "Hydra could not show the achievement preview.",
+                              "Nacho could not show the achievement preview.",
                           });
                         });
                     }}

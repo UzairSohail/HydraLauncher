@@ -1,5 +1,5 @@
-appId: gg.hydralauncher.hydra
-productName: Hydra
+appId: io.github.uzairsohail.nacholauncher
+productName: Nacho Launcher
 beforePack: scripts/legendary-before-pack.cjs
 afterPack: scripts/legendary-after-pack.cjs
 afterSign: scripts/legendary-after-pack.cjs
@@ -42,7 +42,7 @@ asarUnpack:
   - node_modules/sharp/**
   - node_modules/@img/sharp-libvips-*/**
 win:
-  executableName: Hydra
+  executableName: NachoLauncher
   extraResources:
     - from: legendary/win32/${arch}
       to: legendary
@@ -66,7 +66,7 @@ win:
     - nsis
     - portable
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
+  artifactName: nacho-launcher-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
@@ -74,7 +74,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   include: installer.nsh
 portable:
-  artifactName: ${name}-${version}-portable.${ext}
+  artifactName: nacho-launcher-${version}-portable.${ext}
   unpackDirName: false
 mac:
   sign: scripts/legendary-mac-sign.cjs
@@ -97,7 +97,7 @@ mac:
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
 dmg:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: nacho-launcher-${version}.${ext}
 linux:
   extraResources:
     - from: binaries/epic-prerequisite-runner/x64
@@ -136,7 +136,7 @@ linux:
   mimeTypes:
     - x-scheme-handler/hydralauncher
 appImage:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: nacho-launcher-${version}.${ext}
 npmRebuild: false
 publish:
   provider: github

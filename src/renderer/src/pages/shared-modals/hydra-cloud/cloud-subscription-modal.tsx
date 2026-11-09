@@ -200,7 +200,7 @@ export function CloudSubscriptionModal({
         ) : (
           <iframe
             ref={iframeRef}
-            title="Hydra Cloud"
+            title="Nacho Cloud"
             className="cloud-subscription-modal__iframe"
             src={iframeSrc}
             width={CLOUD_DESIGN_WIDTH}

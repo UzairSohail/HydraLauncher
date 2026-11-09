@@ -486,7 +486,7 @@ export function CompatibilitySettingsSection({
       {shouldRenderProtonSection ? (
         <SettingsSection
           title="Default Proton Version"
-          description="Choose which Proton version Hydra should use by default for compatible games."
+          description="Choose which Proton version Nacho should use by default for compatible games."
         >
           <VerticalFocusGroup
             regionId={COMPATIBILITY_SECTION_REGION_ID}
@@ -506,7 +506,7 @@ export function CompatibilitySettingsSection({
       {shouldRenderBehaviorSection ? (
         <SettingsSection
           title="Behavior"
-          description="Control which compatibility helpers Hydra should use when launching supported games."
+          description="Control which compatibility helpers Nacho should use when launching supported games."
         >
           <div className="compatibility-settings-section__content">
             {items

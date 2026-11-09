@@ -100,7 +100,7 @@ export function PowerMenu({
           onClose();
         }}
         title="Power"
-        description="Choose what to do with Hydra or your system."
+        description="Choose what to do with Nacho or your system."
         initialFocusId="big-picture-power-exit"
         className="power-menu"
         backdropClassName="power-menu-backdrop"
