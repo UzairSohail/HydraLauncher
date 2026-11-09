@@ -1,0 +1,1 @@
+export { platformToSystem } from "@shared";

@@ -1,0 +1,538 @@
+import { Notification } from "electron";
+import { t } from "i18next";
+import trayIcon from "@resources/tray-icon.png?asset";
+import fs from "node:fs";
+import axios from "axios";
+import path from "node:path";
+import sound from "sound-play";
+import { achievementSoundPath, chatMessageSoundPath } from "@main/constants";
+import icon from "@resources/icon.png?asset";
+import { NotificationOptions, toXmlString } from "./xml";
+import { logger } from "../logger";
+import { WindowManager } from "../window-manager";
+import type { Game, UserPreferences, UserProfile } from "@types";
+import { db, levelKeys, themesSublevel } from "@main/level";
+import { restartAndInstallUpdate } from "@main/events/autoupdater/restart-and-install-update";
+import { SystemPath } from "../system-path";
+import { getThemeSoundPath } from "@main/helpers";
+import { LocalNotificationManager } from "./local-notifications";
+import {
+  buildDownloadFileName,
+  transcodeNotificationIcon,
+} from "./notification-icon";
+
+/**
+ * Icons live in a directory of our own so it can be emptied wholesale. It is
+ * cleared once per run rather than per notification because Electron reads the
+ * icon off disk lazily, and the app holds a single-instance lock, so no other
+ * run can be relying on what is already there.
+ */
+let notificationIconDirectory: Promise<string> | null = null;
+
+const getNotificationIconDirectory = () => {
+  notificationIconDirectory ??= (async () => {
+    const directory = path.join(
+      SystemPath.getPath("temp"),
+      "hydra-notifications"
+    );
+
+    await fs.promises.rm(directory, { recursive: true, force: true });
+    await fs.promises.mkdir(directory, { recursive: true });
+
+    return directory;
+  })();
+
+  return notificationIconDirectory;
+};
+
+const getStaticImage = async (imagePath: string, removeSource = true) => {
+  try {
+    return await transcodeNotificationIcon(
+      imagePath,
+      await getNotificationIconDirectory()
+    );
+  } catch (error) {
+    logger.error("Failed to transcode notification icon", imagePath, error);
+    return undefined;
+  } finally {
+    // Downloaded inputs can be removed; shared local icons must be preserved.
+    if (removeSource) {
+      await fs.promises.unlink(imagePath).catch(() => undefined);
+    }
+  }
+};
+
+async function downloadImage(url: string | null, signal?: AbortSignal) {
+  if (signal?.aborted) return undefined;
+  if (!url) return undefined;
+  if (url.startsWith("local:")) {
+    const image = await getStaticImage(url.slice("local:".length), false);
+    return signal?.aborted ? undefined : image;
+  }
+  if (!url.startsWith("http")) return undefined;
+
+  const fileName = buildDownloadFileName(url);
+  const outputPath = path.join(await getNotificationIconDirectory(), fileName);
+  const writer = fs.createWriteStream(outputPath);
+
+  const response = await axios.get(url, {
+    responseType: "stream",
+    signal,
+  });
+
+  return new Promise<string | undefined>((resolve) => {
+    let settled = false;
+    const finish = (value: string | undefined) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener("abort", onAbort);
+      resolve(value);
+    };
+    const discardDownload = () =>
+      fs.promises.unlink(outputPath).catch(() => undefined);
+    const onAbort = () => {
+      writer.destroy();
+      void discardDownload();
+      finish(undefined);
+    };
+
+    signal?.addEventListener("abort", onAbort, { once: true });
+    writer.on("finish", async () => {
+      const staticImagePath = await getStaticImage(outputPath);
+      finish(signal?.aborted ? undefined : staticImagePath);
+    });
+    writer.on("error", () => {
+      if (!signal?.aborted) logger.error("Failed to download image", { url });
+      void discardDownload();
+      finish(undefined);
+    });
+    response.data.pipe(writer);
+  });
+}
+
+async function getAchievementSoundPath(): Promise<string> {
+  try {
+    const allThemes = await themesSublevel.values().all();
+    const activeTheme = allThemes.find((theme) => theme.isActive);
+
+    if (activeTheme?.hasCustomSound) {
+      const themeSoundPath = getThemeSoundPath(
+        activeTheme.id,
+        activeTheme.name
+      );
+      if (themeSoundPath) {
+        return themeSoundPath;
+      }
+    }
+  } catch (error) {
+    logger.error("Failed to get theme sound path", error);
+  }
+
+  return achievementSoundPath;
+}
+
+export const publishDownloadCompleteNotification = async (game: Game) => {
+  const userPreferences = await db.get<string, UserPreferences>(
+    levelKeys.userPreferences,
+    {
+      valueEncoding: "json",
+    }
+  );
+
+  const title = t("download_complete", { ns: "notifications" });
+  const body = t("game_ready_to_install", {
+    ns: "notifications",
+    title: game.title,
+  });
+
+  if (userPreferences?.downloadNotificationsEnabled) {
+    new Notification({
+      title,
+      body,
+      icon: await downloadImage(game.iconUrl),
+    }).show();
+  }
+
+  // Create local notification
+  await LocalNotificationManager.createNotification(
+    "DOWNLOAD_COMPLETE",
+    title,
+    body,
+    {
+      pictureUrl: game.iconUrl,
+      url: `/game/${game.shop}/${game.objectId}`,
+    }
+  );
+};
+
+export const publishDownloadHaltedNotification = async (game: Game) => {
+  const userPreferences = await db.get<string, UserPreferences>(
+    levelKeys.userPreferences,
+    {
+      valueEncoding: "json",
+    }
+  );
+
+  if (!userPreferences?.downloadNotificationsEnabled) return;
+
+  new Notification({
+    title: t("download_halted", { ns: "notifications" }),
+    body: t("download_halted_no_disk_space", {
+      ns: "notifications",
+      title: game.title,
+    }),
+    icon: await downloadImage(game.iconUrl),
+  }).show();
+};
+
+export const publishNotificationUpdateReadyToInstall = async (
+  version: string
+) => {
+  const title = t("new_update_available", {
+    ns: "notifications",
+    version,
+  });
+  const body = t("restart_to_install_update", {
+    ns: "notifications",
+  });
+
+  new Notification({
+    title,
+    body,
+    icon: trayIcon,
+  })
+    .on("click", () => {
+      restartAndInstallUpdate();
+    })
+    .show();
+
+  // Create local notification
+  await LocalNotificationManager.createNotification(
+    "UPDATE_AVAILABLE",
+    title,
+    body
+  );
+};
+
+export const publishLeaderboardNotification = async (
+  content: { title: string; body: string; imageUrl: string | null },
+  onClick: () => void,
+  signal?: AbortSignal
+) => {
+  const notificationIcon =
+    (await downloadImage(content.imageUrl, signal).catch(() => undefined)) ??
+    trayIcon;
+  if (signal?.aborted) return;
+
+  const notification = new Notification({
+    title: content.title,
+    body: content.body,
+    icon: notificationIcon,
+  });
+  notification.on("click", onClick);
+  notification.show();
+};
+
+export const publishNewFriendRequestNotification = async (
+  user: UserProfile,
+  signal?: AbortSignal
+) => {
+  if (signal?.aborted) return;
+  const userPreferences = await db.get<string, UserPreferences | null>(
+    levelKeys.userPreferences,
+    {
+      valueEncoding: "json",
+    }
+  );
+
+  if (signal?.aborted) return;
+  if (!userPreferences?.friendRequestNotificationsEnabled) return;
+
+  const notificationIcon =
+    (user?.profileImageUrl
+      ? await downloadImage(user.profileImageUrl, signal)
+      : undefined) ?? trayIcon;
+  if (signal?.aborted) return;
+
+  new Notification({
+    title: t("new_friend_request_title", {
+      ns: "notifications",
+    }),
+    body: t("new_friend_request_description", {
+      ns: "notifications",
+      displayName: user.displayName,
+    }),
+    icon: notificationIcon,
+  }).show();
+};
+
+export const publishFriendStartedPlayingGameNotification = async (
+  friend: {
+    displayName: string;
+    profileImageUrl: string | null;
+    gameTitle: string | null;
+  },
+  signal?: AbortSignal
+) => {
+  if (signal?.aborted) return;
+  const notificationIcon =
+    (friend.profileImageUrl
+      ? await downloadImage(friend.profileImageUrl, signal)
+      : undefined) ?? trayIcon;
+  if (signal?.aborted) return;
+
+  new Notification({
+    title: t("friend_started_playing_game", {
+      ns: "notifications",
+      displayName: friend.displayName,
+    }),
+    body: friend.gameTitle ?? undefined,
+    icon: notificationIcon,
+  }).show();
+};
+
+const CHAT_NOTIFICATION_BODY_MAX_LENGTH = 200;
+/** Matches the chat window's own playback (chat-sounds.ts). */
+const CHAT_MESSAGE_SOUND_VOLUME = 0.35;
+
+// Like the achievement sound, an open window plays it. sound-play, which
+// spawns a process per sound and has no Linux support, only covers the gap
+// before any window has loaded.
+const playChatMessageSound = () => {
+  if (WindowManager.sendToFirstLoadedWindow("on-chat-message-sound")) return;
+  if (process.platform === "linux") return;
+
+  sound
+    .play(chatMessageSoundPath, CHAT_MESSAGE_SOUND_VOLUME)
+    .catch((error) => logger.error("Failed to play chat message sound", error));
+};
+
+// Windows drops click handlers of notifications that get garbage collected, so
+// the latest notification per friend is kept referenced until it closes.
+const chatMessageNotifications = new Map<string, Notification>();
+const CHAT_UNREAD_SUMMARY_NOTIFICATION_KEY = "unread-summary";
+// Bumped on sign-out. A notification from an earlier session neither shows
+// nor reacts to clicks, since it would open a chat for the wrong account.
+let chatNotificationSession = 0;
+
+/** Closes every chat notification still shown, as on sign-out. */
+export const closeChatNotifications = () => {
+  chatNotificationSession++;
+
+  const notifications = [...chatMessageNotifications.values()];
+  chatMessageNotifications.clear();
+  for (const notification of notifications) notification.close();
+};
+
+const showChatNotification = async (
+  key: string,
+  content: { title: string; body: string; imageUrl: string | null },
+  onClick: () => void,
+  signal?: AbortSignal
+) => {
+  if (signal?.aborted) return;
+  const session = chatNotificationSession;
+  const notificationIcon =
+    (content.imageUrl
+      ? await downloadImage(content.imageUrl, signal)
+      : undefined) ?? trayIcon;
+  if (signal?.aborted || session !== chatNotificationSession) return;
+
+  chatMessageNotifications.get(key)?.close();
+
+  // Silent: chat plays its own sound instead of the system one.
+  const notification = new Notification({
+    title: content.title,
+    body:
+      content.body.length > CHAT_NOTIFICATION_BODY_MAX_LENGTH
+        ? `${content.body.slice(0, CHAT_NOTIFICATION_BODY_MAX_LENGTH)}…`
+        : content.body,
+    icon: notificationIcon,
+    silent: true,
+  });
+
+  notification.on("click", () => {
+    if (session === chatNotificationSession) onClick();
+  });
+  notification.on("close", () => {
+    if (chatMessageNotifications.get(key) === notification) {
+      chatMessageNotifications.delete(key);
+    }
+  });
+
+  chatMessageNotifications.set(key, notification);
+  notification.show();
+
+  if (!WindowManager.isChatWindowFocused()) playChatMessageSound();
+};
+
+type ChatSender = Pick<UserProfile, "id" | "displayName" | "profileImageUrl">;
+
+export const publishChatMessageNotification = (
+  sender: ChatSender,
+  body: string,
+  onClick: () => void,
+  signal?: AbortSignal
+) =>
+  showChatNotification(
+    sender.id,
+    {
+      title: t("chat_message_title", {
+        ns: "notifications",
+        displayName: sender.displayName,
+      }),
+      body,
+      imageUrl: sender.profileImageUrl,
+    },
+    onClick,
+    signal
+  );
+
+/** Announces messages that arrived while the launcher was closed or offline. */
+export const publishChatUnreadNotification = (
+  unread:
+    | { kind: "friend"; sender: ChatSender; messageCount: number }
+    | { kind: "summary"; friendCount: number; messageCount: number },
+  onClick: () => void,
+  signal?: AbortSignal
+) =>
+  unread.kind === "friend"
+    ? showChatNotification(
+        unread.sender.id,
+        {
+          title: t("chat_message_title", {
+            ns: "notifications",
+            displayName: unread.sender.displayName,
+          }),
+          body: t("chat_unread_from_friend", {
+            ns: "notifications",
+            count: unread.messageCount,
+          }),
+          imageUrl: unread.sender.profileImageUrl,
+        },
+        onClick,
+        signal
+      )
+    : showChatNotification(
+        CHAT_UNREAD_SUMMARY_NOTIFICATION_KEY,
+        {
+          title: t("chat_unread_summary_title", {
+            ns: "notifications",
+            count: unread.messageCount,
+          }),
+          body: t("chat_unread_summary_body", {
+            ns: "notifications",
+            count: unread.friendCount,
+          }),
+          imageUrl: null,
+        },
+        onClick,
+        signal
+      );
+
+export const publishCombinedNewAchievementNotification = async (
+  achievementCount,
+  gameCount
+) => {
+  const options: NotificationOptions = {
+    title: t("achievement_unlocked", { ns: "achievement" }),
+    body: t("new_achievements_unlocked", {
+      ns: "achievement",
+      gameCount,
+      achievementCount,
+    }),
+    icon,
+    silent: true,
+  };
+
+  new Notification({
+    ...options,
+    toastXml: toXmlString(options),
+  }).show();
+
+  if (WindowManager.mainWindow) {
+    WindowManager.mainWindow.webContents.send("on-achievement-unlocked");
+  } else if (process.platform !== "linux") {
+    const soundPath = await getAchievementSoundPath();
+    sound.play(soundPath);
+  }
+};
+
+export const publishExtractionCompleteNotification = async (game: Game) => {
+  const title = t("extraction_complete", { ns: "notifications" });
+  const body = t("game_extracted", {
+    ns: "notifications",
+    title: game.title,
+  });
+
+  new Notification({
+    title,
+    body,
+    icon: trayIcon,
+  }).show();
+
+  // Create local notification
+  await LocalNotificationManager.createNotification(
+    "EXTRACTION_COMPLETE",
+    title,
+    body,
+    {
+      pictureUrl: game.iconUrl,
+      url: `/game/${game.shop}/${game.objectId}`,
+    }
+  );
+};
+
+export const publishNewAchievementNotification = async (info: {
+  achievements: { title: string; iconUrl: string }[];
+  unlockedAchievementCount: number;
+  totalAchievementCount: number;
+  gameTitle: string;
+  gameIcon: string | null;
+  suppressSound?: boolean;
+}) => {
+  const partialOptions =
+    info.achievements.length > 1
+      ? {
+          title: t("achievements_unlocked_for_game", {
+            ns: "achievement",
+            gameTitle: info.gameTitle,
+            achievementCount: info.achievements.length,
+          }),
+          body: info.achievements.map((a) => a.title).join(", "),
+          icon: (await downloadImage(info.gameIcon)) ?? icon,
+        }
+      : {
+          title: t("achievement_unlocked", { ns: "achievement" }),
+          body: info.achievements[0].title,
+          icon: (await downloadImage(info.achievements[0].iconUrl)) ?? icon,
+        };
+
+  const options: NotificationOptions = {
+    ...partialOptions,
+    silent: true,
+    progress: {
+      value: info.unlockedAchievementCount / info.totalAchievementCount,
+      valueOverride: t("achievement_progress", {
+        ns: "achievement",
+        unlockedCount: info.unlockedAchievementCount,
+        totalCount: info.totalAchievementCount,
+      }),
+    },
+  };
+
+  new Notification({
+    ...options,
+    toastXml: toXmlString(options),
+  }).show();
+
+  if (WindowManager.mainWindow) {
+    WindowManager.mainWindow.webContents.send(
+      "on-achievement-unlocked",
+      info.suppressSound
+    );
+  } else if (!info.suppressSound && process.platform !== "linux") {
+    const soundPath = await getAchievementSoundPath();
+    sound.play(soundPath);
+  }
+};

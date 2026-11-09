@@ -1,0 +1,1611 @@
+import {
+  CheckCircleFillIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  DownloadIcon,
+  FileDirectoryIcon,
+  FileIcon,
+  PlusIcon,
+  SyncIcon,
+} from "@primer/octicons-react";
+import {
+  Badge,
+  Button,
+  CheckboxField,
+  Link,
+  Modal,
+  SelectField,
+  TextField,
+} from "@renderer/components";
+import { DOWNLOADER_NAME } from "@renderer/constants";
+import {
+  useAppSelector,
+  useDownload,
+  useFeature,
+  useToast,
+} from "@renderer/hooks";
+import { useSubscription } from "@renderer/hooks/use-subscription";
+import {
+  DownloadError,
+  Downloader,
+  MINIMUM_FREE_DISK_SPACE_BYTES,
+  formatBytes,
+  getDownloadersForUri,
+  parseBytes,
+} from "@shared";
+import type { GameRepack, TorrentFile, TorrentFilesResponse } from "@types";
+import { motion } from "framer-motion";
+import {
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Trans, useTranslation } from "react-i18next";
+import { Tooltip } from "react-tooltip";
+import "./download-settings-modal.scss";
+import { RealDebridInfoModal } from "./real-debrid-info-modal";
+import {
+  getDefaultDownloader,
+  useDownloadOptions,
+} from "./use-download-options";
+import { gameDetailsContext } from "@renderer/context";
+import {
+  beginDownloadFlight,
+  type PendingDownloadFlight,
+} from "@renderer/components/sidebar/download-flight";
+import {
+  platformToRetroArchPlatform,
+  platformToSystem,
+} from "@renderer/helpers";
+
+export interface DownloadSettingsModalProps {
+  visible: boolean;
+  onClose: () => void;
+  startDownload: (
+    repack: GameRepack,
+    downloader: Downloader,
+    downloadPath: string,
+    automaticallyExtract: boolean,
+    addToQueueOnly?: boolean,
+    fileIndices?: number[],
+    selectedFilesSize?: number | null,
+    automaticallyDeleteArchiveFiles?: boolean,
+    signal?: AbortSignal
+  ) => Promise<{ ok: boolean; error?: string }>;
+  repack: GameRepack | null;
+}
+
+type TorrentSortColumn = "name" | "size" | "downloading";
+type TorrentSortDirection = "asc" | "desc";
+
+const parseTorrentSortOption = (
+  value: string
+): { column: TorrentSortColumn; direction: TorrentSortDirection } => {
+  const [column, direction] = value.split("_");
+
+  if (
+    (column === "name" || column === "size" || column === "downloading") &&
+    (direction === "asc" || direction === "desc")
+  ) {
+    return { column, direction };
+  }
+
+  return { column: "name", direction: "asc" };
+};
+
+interface TorrentFolderNode {
+  id: string;
+  name: string;
+  parentId: string | null;
+  childFolderIds: string[];
+  directFileIndices: number[];
+  allFileIndices: number[];
+  totalSize: number;
+}
+
+type TorrentTreeRow =
+  | {
+      key: string;
+      type: "folder";
+      folderId: string;
+      depth: number;
+      name: string;
+      totalSize: number;
+      selectedCount: number;
+      totalCount: number;
+      expanded: boolean;
+    }
+  | {
+      key: string;
+      type: "file";
+      file: TorrentFile;
+      depth: number;
+      name: string;
+      selected: boolean;
+    };
+
+type FolderTorrentTreeRow = Extract<TorrentTreeRow, { type: "folder" }>;
+type FileTorrentTreeRow = Extract<TorrentTreeRow, { type: "file" }>;
+
+interface TorrentTreeData {
+  ROOT_ID: string;
+  folders: Map<string, TorrentFolderNode>;
+  rootFolderIds: string[];
+  rootFileIndices: number[];
+  fileNameByIndex: Map<number, string>;
+}
+
+const ROOT_TORRENT_FOLDER_ID = "__root__";
+
+const createTorrentFolderNode = (
+  id: string,
+  name: string,
+  parentId: string | null
+): TorrentFolderNode => ({
+  id,
+  name,
+  parentId,
+  childFolderIds: [],
+  directFileIndices: [],
+  allFileIndices: [],
+  totalSize: 0,
+});
+
+const addFileToTorrentTree = (
+  file: TorrentFile,
+  folders: Map<string, TorrentFolderNode>,
+  fileNameByIndex: Map<number, string>
+) => {
+  const rootNode = folders.get(ROOT_TORRENT_FOLDER_ID);
+  if (!rootNode) return;
+
+  const normalizedPath = file.path.replaceAll("\\", "/");
+  const pathParts = normalizedPath.split("/").filter(Boolean);
+  const fileName = pathParts.at(-1) ?? file.path;
+  fileNameByIndex.set(file.index, fileName);
+
+  if (pathParts.length <= 1) {
+    rootNode.directFileIndices.push(file.index);
+    return;
+  }
+
+  let parentFolderId = ROOT_TORRENT_FOLDER_ID;
+  let folderPath = "";
+
+  pathParts.slice(0, -1).forEach((segment) => {
+    folderPath = folderPath ? `${folderPath}/${segment}` : segment;
+
+    if (!folders.has(folderPath)) {
+      folders.set(
+        folderPath,
+        createTorrentFolderNode(
+          folderPath,
+          segment,
+          parentFolderId === ROOT_TORRENT_FOLDER_ID ? null : parentFolderId
+        )
+      );
+      folders.get(parentFolderId)?.childFolderIds.push(folderPath);
+    }
+
+    parentFolderId = folderPath;
+  });
+
+  folders.get(parentFolderId)?.directFileIndices.push(file.index);
+};
+
+const computeTorrentFolderInfo = (
+  folderId: string,
+  folders: Map<string, TorrentFolderNode>,
+  torrentFilesByIndex: Map<number, TorrentFile>
+): number[] => {
+  const folder = folders.get(folderId);
+  if (!folder) return [];
+
+  const nestedFileIndices = folder.childFolderIds.flatMap((childFolderId) =>
+    computeTorrentFolderInfo(childFolderId, folders, torrentFilesByIndex)
+  );
+
+  folder.allFileIndices = [...folder.directFileIndices, ...nestedFileIndices];
+  folder.totalSize = folder.allFileIndices.reduce(
+    (sum, index) => sum + (torrentFilesByIndex.get(index)?.length ?? 0),
+    0
+  );
+
+  return folder.allFileIndices;
+};
+
+const buildTorrentTreeData = (
+  torrentFiles: TorrentFile[],
+  torrentFilesByIndex: Map<number, TorrentFile>
+): TorrentTreeData => {
+  const folders = new Map<string, TorrentFolderNode>();
+  const rootNode = createTorrentFolderNode(ROOT_TORRENT_FOLDER_ID, "", null);
+  const fileNameByIndex = new Map<number, string>();
+
+  folders.set(ROOT_TORRENT_FOLDER_ID, rootNode);
+  torrentFiles.forEach((file) => {
+    addFileToTorrentTree(file, folders, fileNameByIndex);
+  });
+
+  computeTorrentFolderInfo(
+    ROOT_TORRENT_FOLDER_ID,
+    folders,
+    torrentFilesByIndex
+  );
+
+  return {
+    ROOT_ID: ROOT_TORRENT_FOLDER_ID,
+    folders,
+    rootFolderIds: [...rootNode.childFolderIds],
+    rootFileIndices: [...rootNode.directFileIndices],
+    fileNameByIndex,
+  };
+};
+
+const getProviderTorrentFiles = (
+  magnetUri: string,
+  downloader: Downloader | null
+) => {
+  if (downloader === Downloader.Torrent) {
+    return window.electron.getTorrentFiles(magnetUri);
+  }
+
+  return window.electron.getDebridFiles(magnetUri, downloader!);
+};
+
+const MAX_CACHED_TORRENT_MANIFESTS = 20;
+
+const rememberTorrentFiles = (
+  cache: Map<string, TorrentFilesResponse>,
+  downloader: Downloader | null,
+  key: string,
+  files: TorrentFilesResponse
+) => {
+  if (cache.size >= MAX_CACHED_TORRENT_MANIFESTS) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey) cache.delete(oldestKey);
+  }
+  if (downloader === Downloader.Torrent) cache.set(key, files);
+};
+
+export function DownloadSettingsModal({
+  visible,
+  onClose,
+  startDownload,
+  repack,
+}: Readonly<DownloadSettingsModalProps>) {
+  const { t } = useTranslation("game_details");
+
+  const { game, shopDetails, shop } = useContext(gameDetailsContext);
+
+  const emulatorSystem = useMemo(() => {
+    if (shop !== "launchbox") return null;
+    return platformToSystem(game?.platform ?? shopDetails?.platform ?? null);
+  }, [shop, game?.platform, shopDetails?.platform]);
+
+  const retroArchPlatform = useMemo(() => {
+    if (shop !== "launchbox" || emulatorSystem) return null;
+    return platformToRetroArchPlatform(
+      game?.platform ?? shopDetails?.platform ?? null
+    );
+  }, [shop, emulatorSystem, game?.platform, shopDetails?.platform]);
+
+  const userPreferences = useAppSelector(
+    (state) => state.userPreferences.value
+  );
+
+  const { lastPacket } = useDownload();
+  const { showErrorToast } = useToast();
+
+  const hasActiveDownload = lastPacket !== null;
+
+  const [diskFreeSpace, setDiskFreeSpace] = useState<number | null>(null);
+  const [selectedPath, setSelectedPath] = useState("");
+  const [downloadStarting, setDownloadStarting] = useState(false);
+  const [automaticExtractionEnabled, setAutomaticExtractionEnabled] = useState(
+    userPreferences?.extractFilesByDefault ?? true
+  );
+  const [
+    deleteArchiveFilesAfterExtraction,
+    setDeleteArchiveFilesAfterExtraction,
+  ] = useState(
+    userPreferences?.deleteArchiveFilesAfterExtractionByDefault ?? true
+  );
+  const [selectedDownloader, setSelectedDownloader] =
+    useState<Downloader | null>(null);
+  const [hasWritePermission, setHasWritePermission] = useState<boolean | null>(
+    null
+  );
+  const [showRealDebridModal, setShowRealDebridModal] = useState(false);
+  const [torrentFiles, setTorrentFiles] = useState<TorrentFile[]>([]);
+  const [singleArchiveSelectionKey, setSingleArchiveSelectionKey] = useState<
+    string | null
+  >(null);
+  const [torrentFilesLoading, setTorrentFilesLoading] = useState(false);
+  const [torrentFilesError, setTorrentFilesError] = useState<string | null>(
+    null
+  );
+  const [torrentFileSearch, setTorrentFileSearch] = useState("");
+  const [selectedTorrentIndices, setSelectedTorrentIndices] = useState<
+    Set<number>
+  >(new Set());
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(
+    new Set()
+  );
+  const [showTorrentStepModal, setShowTorrentStepModal] = useState(false);
+  const [torrentSort, setTorrentSort] = useState<{
+    column: TorrentSortColumn;
+    direction: TorrentSortDirection;
+  }>({ column: "name", direction: "asc" });
+  const torrentFilesCache = useRef<Map<string, TorrentFilesResponse>>(
+    new Map()
+  );
+  const torrentFilesRequestIdRef = useRef(0);
+  const activeStartRequestIdRef = useRef(0);
+  const startAbortControllerRef = useRef<AbortController | null>(null);
+
+  const { isFeatureEnabled, Feature } = useFeature();
+  const { showHydraCloudModal } = useSubscription();
+
+  const selectedUri = useMemo(() => {
+    if (!repack || selectedDownloader === null) return null;
+
+    return (
+      repack.uris.find((uri) =>
+        getDownloadersForUri(uri).includes(selectedDownloader)
+      ) ?? null
+    );
+  }, [repack, selectedDownloader]);
+
+  const selectedMagnetUri = useMemo(() => {
+    if (
+      selectedDownloader !== Downloader.Torrent &&
+      selectedDownloader !== Downloader.TorBox &&
+      selectedDownloader !== Downloader.RealDebrid
+    )
+      return null;
+    if (!selectedUri?.startsWith("magnet:")) return null;
+    return selectedUri;
+  }, [selectedDownloader, selectedUri]);
+
+  const getDiskFreeSpace = async (path: string) => {
+    const result = await globalThis.electron.getDiskFreeSpace(path);
+    setDiskFreeSpace(result?.free ?? null);
+  };
+
+  const checkFolderWritePermission = useCallback(
+    async (path: string) => {
+      if (isFeatureEnabled(Feature.CheckDownloadWritePermission)) {
+        const result =
+          await globalThis.electron.checkFolderWritePermission(path);
+        setHasWritePermission(result);
+      } else {
+        setHasWritePermission(true);
+      }
+    },
+    [Feature, isFeatureEnabled]
+  );
+
+  useEffect(() => {
+    if (visible) {
+      getDiskFreeSpace(selectedPath);
+      checkFolderWritePermission(selectedPath);
+    }
+  }, [visible, checkFolderWritePermission, selectedPath]);
+
+  const downloadOptions = useDownloadOptions(repack);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolveDefaultPath = async () => {
+      let romPath: string | null = null;
+
+      if (emulatorSystem) {
+        romPath = await globalThis.electron
+          .getEmulatorConfigs()
+          .then(
+            (configs) => configs[emulatorSystem]?.romFolders?.[0]?.path ?? null
+          )
+          .catch(() => null);
+      } else if (retroArchPlatform) {
+        romPath = await globalThis.electron
+          .getRetroArchConfig()
+          .then((config) => config.romFolders?.[0]?.path ?? null)
+          .catch(() => null);
+      }
+
+      if (cancelled) return;
+
+      if (romPath) {
+        setSelectedPath(romPath);
+      } else if (userPreferences?.downloadsPath) {
+        setSelectedPath(userPreferences.downloadsPath);
+      } else {
+        const defaultDownloadsPath =
+          await globalThis.electron.getDefaultDownloadsPath();
+        if (!cancelled) setSelectedPath(defaultDownloadsPath);
+      }
+    };
+
+    void resolveDefaultPath();
+
+    const availableDownloaders = downloadOptions
+      .filter((option) => option.isAvailable)
+      .map((option) => option.downloader);
+
+    setSelectedDownloader(getDefaultDownloader(availableDownloaders));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    userPreferences?.downloadsPath,
+    downloadOptions,
+    emulatorSystem,
+    retroArchPlatform,
+  ]);
+
+  useEffect(() => {
+    if (visible) {
+      setDeleteArchiveFilesAfterExtraction(
+        userPreferences?.deleteArchiveFilesAfterExtractionByDefault ?? true
+      );
+      setAutomaticExtractionEnabled(
+        userPreferences?.extractFilesByDefault ?? true
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  const torrentFilesByIndex = useMemo(() => {
+    const fileMap = new Map<number, TorrentFile>();
+    torrentFiles.forEach((file) => fileMap.set(file.index, file));
+    return fileMap;
+  }, [torrentFiles]);
+
+  const selectedTorrentSize = useMemo(() => {
+    let total = 0;
+    selectedTorrentIndices.forEach((index) => {
+      total += torrentFilesByIndex.get(index)?.length ?? 0;
+    });
+    return total;
+  }, [selectedTorrentIndices, torrentFilesByIndex]);
+
+  const requiredSpace = useMemo(() => {
+    if (selectedTorrentSize > 0) return selectedTorrentSize;
+
+    return parseBytes(repack?.fileSize ?? null);
+  }, [selectedTorrentSize, repack?.fileSize]);
+
+  const hasEnoughDiskSpace = useMemo(() => {
+    if (diskFreeSpace === null || requiredSpace === null) return true;
+
+    return diskFreeSpace >= requiredSpace + MINIMUM_FREE_DISK_SPACE_BYTES;
+  }, [diskFreeSpace, requiredSpace]);
+
+  const torrentTree = useMemo(
+    () => buildTorrentTreeData(torrentFiles, torrentFilesByIndex),
+    [torrentFiles, torrentFilesByIndex]
+  );
+
+  const normalizedTorrentSearch = torrentFileSearch.trim().toLowerCase();
+
+  const folderSelectedCountById = useMemo(() => {
+    const selectedCountMap = new Map<string, number>();
+
+    torrentTree.folders.forEach((folder, folderId) => {
+      const selectedCount = folder.allFileIndices.reduce(
+        (count, index) =>
+          selectedTorrentIndices.has(index) ? count + 1 : count,
+        0
+      );
+      selectedCountMap.set(folderId, selectedCount);
+    });
+
+    return selectedCountMap;
+  }, [selectedTorrentIndices, torrentTree]);
+
+  const filteredTorrentRows = useMemo(() => {
+    const directionMultiplier = torrentSort.direction === "asc" ? 1 : -1;
+
+    const compareFileIndices = (aIndex: number, bIndex: number) => {
+      const aFile = torrentFilesByIndex.get(aIndex);
+      const bFile = torrentFilesByIndex.get(bIndex);
+      if (!aFile || !bFile) return 0;
+
+      if (torrentSort.column === "name") {
+        const nameComparison = (
+          torrentTree.fileNameByIndex.get(aIndex) ?? ""
+        ).localeCompare(torrentTree.fileNameByIndex.get(bIndex) ?? "");
+        return nameComparison * directionMultiplier;
+      }
+
+      if (torrentSort.column === "size") {
+        return (aFile.length - bFile.length) * directionMultiplier;
+      }
+
+      const aSelected = selectedTorrentIndices.has(aIndex);
+      const bSelected = selectedTorrentIndices.has(bIndex);
+      const downloadingComparison = Number(aSelected) - Number(bSelected);
+
+      return downloadingComparison * directionMultiplier;
+    };
+
+    const compareFolderIds = (aFolderId: string, bFolderId: string) => {
+      const aFolder = torrentTree.folders.get(aFolderId);
+      const bFolder = torrentTree.folders.get(bFolderId);
+      if (!aFolder || !bFolder) return 0;
+
+      let comparison = 0;
+      if (torrentSort.column === "name") {
+        comparison = aFolder.name.localeCompare(bFolder.name);
+      } else if (torrentSort.column === "size") {
+        comparison = aFolder.totalSize - bFolder.totalSize;
+      } else {
+        const aCount = folderSelectedCountById.get(aFolderId) ?? 0;
+        const bCount = folderSelectedCountById.get(bFolderId) ?? 0;
+        const aRatio = aFolder.allFileIndices.length
+          ? aCount / aFolder.allFileIndices.length
+          : 0;
+        const bRatio = bFolder.allFileIndices.length
+          ? bCount / bFolder.allFileIndices.length
+          : 0;
+        comparison = aRatio - bRatio;
+      }
+
+      return comparison * directionMultiplier;
+    };
+
+    const matchesSearch = (text: string) =>
+      !normalizedTorrentSearch ||
+      text.toLowerCase().includes(normalizedTorrentSearch);
+
+    const matchingFileIndices = new Set<number>();
+    torrentFiles.forEach((file) => {
+      if (matchesSearch(file.path)) {
+        matchingFileIndices.add(file.index);
+      }
+    });
+
+    const folderMatchMemo = new Map<string, boolean>();
+    const hasMatchingContent = (folderId: string): boolean => {
+      if (!normalizedTorrentSearch) return true;
+      const memoized = folderMatchMemo.get(folderId);
+      if (memoized !== undefined) return memoized;
+
+      const folder = torrentTree.folders.get(folderId);
+      if (!folder) return false;
+
+      const selfMatch = matchesSearch(folder.name);
+      const hasMatchingFiles = folder.directFileIndices.some((index) =>
+        matchingFileIndices.has(index)
+      );
+      const hasMatchingChildren = folder.childFolderIds.some((childId) =>
+        hasMatchingContent(childId)
+      );
+
+      const result = selfMatch || hasMatchingFiles || hasMatchingChildren;
+      folderMatchMemo.set(folderId, result);
+      return result;
+    };
+
+    const rows: TorrentTreeRow[] = [];
+
+    const addFolderRows = (folderId: string, depth: number) => {
+      const folder = torrentTree.folders.get(folderId);
+      if (!folder || !hasMatchingContent(folderId)) return;
+
+      const selectedCount = folderSelectedCountById.get(folderId) ?? 0;
+      const expanded = normalizedTorrentSearch
+        ? true
+        : expandedFolderIds.has(folderId);
+
+      rows.push({
+        key: `folder:${folderId}`,
+        type: "folder",
+        folderId,
+        depth,
+        name: folder.name,
+        totalSize: folder.totalSize,
+        selectedCount,
+        totalCount: folder.allFileIndices.length,
+        expanded,
+      });
+
+      if (!expanded) return;
+
+      const sortedChildFolders = [...folder.childFolderIds].sort(
+        compareFolderIds
+      );
+      sortedChildFolders.forEach((childId) =>
+        addFolderRows(childId, depth + 1)
+      );
+
+      const sortedDirectFiles = [...folder.directFileIndices]
+        .filter((index) =>
+          normalizedTorrentSearch ? matchingFileIndices.has(index) : true
+        )
+        .sort(compareFileIndices);
+
+      sortedDirectFiles.forEach((fileIndex) => {
+        const file = torrentFilesByIndex.get(fileIndex);
+        if (!file) return;
+
+        rows.push({
+          key: `file:${fileIndex}`,
+          type: "file",
+          file,
+          depth: depth + 1,
+          name: torrentTree.fileNameByIndex.get(fileIndex) ?? file.path,
+          selected: selectedTorrentIndices.has(fileIndex),
+        });
+      });
+    };
+
+    [...torrentTree.rootFolderIds]
+      .sort(compareFolderIds)
+      .forEach((folderId) => {
+        addFolderRows(folderId, 0);
+      });
+
+    [...torrentTree.rootFileIndices]
+      .filter((index) =>
+        normalizedTorrentSearch ? matchingFileIndices.has(index) : true
+      )
+      .sort(compareFileIndices)
+      .forEach((fileIndex) => {
+        const file = torrentFilesByIndex.get(fileIndex);
+        if (!file) return;
+
+        rows.push({
+          key: `file:${fileIndex}`,
+          type: "file",
+          file,
+          depth: 0,
+          name: torrentTree.fileNameByIndex.get(fileIndex) ?? file.path,
+          selected: selectedTorrentIndices.has(fileIndex),
+        });
+      });
+
+    return rows;
+  }, [
+    expandedFolderIds,
+    folderSelectedCountById,
+    normalizedTorrentSearch,
+    selectedTorrentIndices,
+    torrentFiles,
+    torrentFilesByIndex,
+    torrentSort,
+    torrentTree,
+  ]);
+
+  const canOpenTorrentStep =
+    visible &&
+    !!selectedMagnetUri &&
+    (selectedDownloader === Downloader.Torrent ||
+      (selectedDownloader === Downloader.TorBox &&
+        !!userPreferences?.torBoxApiToken) ||
+      (selectedDownloader === Downloader.RealDebrid &&
+        !!userPreferences?.realDebridApiToken));
+
+  const shouldShowTorrentFiles = canOpenTorrentStep && showTorrentStepModal;
+  const selectedTorrentKey = `${selectedDownloader}:${selectedMagnetUri}`;
+  const isSingleArchive = singleArchiveSelectionKey === selectedTorrentKey;
+
+  const allTorrentFilesSelected =
+    torrentFiles.length > 0 &&
+    selectedTorrentIndices.size === torrentFiles.length;
+
+  const resetTorrentStepState = useCallback(() => {
+    torrentFilesRequestIdRef.current += 1;
+    setTorrentFiles([]);
+    setSelectedTorrentIndices(new Set());
+    setExpandedFolderIds(new Set());
+    setTorrentFilesError(null);
+    setTorrentFilesLoading(false);
+    setTorrentFileSearch("");
+    setShowTorrentStepModal(false);
+  }, []);
+
+  const fetchTorrentFiles = useCallback(async (): Promise<
+    TorrentFilesResponse | null | undefined
+  > => {
+    if (!selectedMagnetUri) {
+      return;
+    }
+
+    const requestId = ++torrentFilesRequestIdRef.current;
+    const isRequestOutdated = () =>
+      requestId !== torrentFilesRequestIdRef.current || !canOpenTorrentStep;
+
+    const cacheKey = `${selectedDownloader}:${selectedMagnetUri}`;
+    const cached =
+      selectedDownloader !== Downloader.Torrent
+        ? undefined
+        : torrentFilesCache.current.get(cacheKey);
+    const setAvailableFiles = (files: TorrentFile[]) => {
+      setTorrentFiles(files);
+      setSelectedTorrentIndices(new Set(files.map((file) => file.index)));
+      setExpandedFolderIds(new Set());
+      setTorrentFilesError(null);
+      setTorrentFilesLoading(false);
+    };
+    const setUnavailableFiles = (error: DownloadError) => {
+      setTorrentFiles([]);
+      setSelectedTorrentIndices(new Set());
+      setExpandedFolderIds(new Set());
+      setTorrentFilesError(error);
+      setTorrentFilesLoading(false);
+    };
+
+    if (cached) {
+      if (isRequestOutdated()) return;
+      setAvailableFiles(cached.files);
+      return cached;
+    }
+
+    setTorrentFilesLoading(true);
+    setTorrentFilesError(null);
+
+    let response:
+      | { ok: true; data: TorrentFilesResponse }
+      | { ok: false; error: string };
+
+    try {
+      response = await getProviderTorrentFiles(
+        selectedMagnetUri,
+        selectedDownloader
+      );
+    } catch {
+      if (isRequestOutdated()) return;
+      setUnavailableFiles(DownloadError.TorrentFilesUnavailable);
+      return null;
+    }
+
+    if (!response.ok) {
+      if (isRequestOutdated()) return;
+      setUnavailableFiles(
+        Object.values(DownloadError).includes(response.error as DownloadError)
+          ? (response.error as DownloadError)
+          : DownloadError.TorrentFilesUnavailable
+      );
+      return null;
+    }
+
+    if (isRequestOutdated()) return;
+
+    rememberTorrentFiles(
+      torrentFilesCache.current,
+      selectedDownloader,
+      cacheKey,
+      response.data
+    );
+    setAvailableFiles(response.data.files);
+    return response.data;
+  }, [canOpenTorrentStep, selectedDownloader, selectedMagnetUri]);
+
+  useEffect(() => {
+    if (!shouldShowTorrentFiles) {
+      resetTorrentStepState();
+    }
+  }, [resetTorrentStepState, selectedTorrentKey, shouldShowTorrentFiles]);
+
+  useEffect(() => {
+    if (!visible) {
+      activeStartRequestIdRef.current += 1;
+      startAbortControllerRef.current?.abort();
+      startAbortControllerRef.current = null;
+      setDownloadStarting(false);
+      setSingleArchiveSelectionKey(null);
+      resetTorrentStepState();
+    }
+  }, [resetTorrentStepState, visible]);
+
+  useEffect(() => {
+    if (!canOpenTorrentStep && showTorrentStepModal) {
+      setShowTorrentStepModal(false);
+    }
+  }, [canOpenTorrentStep, showTorrentStepModal]);
+
+  useEffect(() => {
+    if (torrentTree.rootFolderIds.length === 0) {
+      setExpandedFolderIds(new Set());
+      return;
+    }
+
+    setExpandedFolderIds(new Set(torrentTree.rootFolderIds));
+  }, [torrentTree.rootFolderIds]);
+
+  const toggleTorrentFile = useCallback(
+    (file: TorrentFile) => {
+      setSelectedTorrentIndices((current) => {
+        const next = new Set(current);
+        const isSelected = next.has(file.index);
+
+        if (isSelected) {
+          next.delete(file.index);
+        } else {
+          next.add(file.index);
+        }
+
+        return next;
+      });
+    },
+    [setSelectedTorrentIndices]
+  );
+
+  const toggleTorrentFolder = useCallback(
+    (folderId: string) => {
+      const folder = torrentTree.folders.get(folderId);
+      if (!folder || folder.allFileIndices.length === 0) return;
+
+      setSelectedTorrentIndices((current) => {
+        const next = new Set(current);
+        const shouldDeselect = folder.allFileIndices.every((index) =>
+          next.has(index)
+        );
+
+        folder.allFileIndices.forEach((index) => {
+          if (shouldDeselect) {
+            next.delete(index);
+          } else {
+            next.add(index);
+          }
+        });
+
+        return next;
+      });
+    },
+    [torrentTree.folders]
+  );
+
+  const toggleFolderExpanded = useCallback((folderId: string) => {
+    setExpandedFolderIds((current) => {
+      const next = new Set(current);
+      if (next.has(folderId)) {
+        next.delete(folderId);
+      } else {
+        next.add(folderId);
+      }
+      return next;
+    });
+  }, []);
+
+  const selectAllTorrentFiles = useCallback(() => {
+    const allIndices = new Set(torrentFiles.map((file) => file.index));
+    setSelectedTorrentIndices(allIndices);
+  }, [torrentFiles]);
+
+  const clearTorrentSelection = useCallback(() => {
+    setSelectedTorrentIndices(new Set());
+  }, []);
+
+  const handleChooseDownloadsPath = async () => {
+    const { filePaths } = await globalThis.electron.showOpenDialog({
+      defaultPath: selectedPath,
+      properties: ["openDirectory"],
+    });
+
+    if (filePaths && filePaths.length > 0) {
+      const path = filePaths[0];
+      setSelectedPath(path);
+    }
+  };
+
+  const getButtonContent = () => {
+    if (downloadStarting) {
+      return (
+        <>
+          <SyncIcon className="download-settings-modal__loading-spinner" />
+          {t("loading")}
+        </>
+      );
+    }
+
+    if (hasActiveDownload) {
+      return (
+        <>
+          <PlusIcon />
+          {t("add_to_queue")}
+        </>
+      );
+    }
+
+    return (
+      <>
+        <DownloadIcon />
+        {t("download_now")}
+      </>
+    );
+  };
+
+  const handleStartClick = async (
+    flight: PendingDownloadFlight,
+    selectedFileIndices?: number[],
+    totalSelectedSize?: number
+  ) => {
+    if (!repack) {
+      flight.cancel();
+      return;
+    }
+
+    const requestId = ++activeStartRequestIdRef.current;
+    startAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    startAbortControllerRef.current = abortController;
+
+    setDownloadStarting(true);
+
+    try {
+      const response = await startDownload(
+        repack,
+        selectedDownloader!,
+        selectedPath,
+        automaticExtractionEnabled,
+        hasActiveDownload,
+        selectedFileIndices,
+        totalSelectedSize,
+        deleteArchiveFilesAfterExtraction,
+        abortController.signal
+      );
+
+      if (
+        requestId !== activeStartRequestIdRef.current ||
+        abortController.signal.aborted
+      ) {
+        return;
+      }
+
+      if (response.ok) {
+        flight.launch(shopDetails?.assets?.iconUrl || game?.iconUrl);
+        resetTorrentStepState();
+        onClose();
+        return;
+      } else if (response.error) {
+        showErrorToast(t("download_error"), t(response.error), 4_000);
+      }
+    } catch (error) {
+      if (
+        abortController.signal.aborted ||
+        (error instanceof Error && error.name === "AbortError")
+      ) {
+        return;
+      }
+
+      if (error instanceof Error) {
+        showErrorToast(t("download_error"), error.message, 4_000);
+      }
+    } finally {
+      // Does nothing once the flight launched.
+      flight.cancel();
+
+      if (requestId === activeStartRequestIdRef.current) {
+        startAbortControllerRef.current = null;
+        setDownloadStarting(false);
+      }
+    }
+  };
+
+  const handleCloseModal = useCallback(() => {
+    activeStartRequestIdRef.current += 1;
+    startAbortControllerRef.current?.abort();
+    startAbortControllerRef.current = null;
+    setDownloadStarting(false);
+    resetTorrentStepState();
+    onClose();
+  }, [onClose, resetTorrentStepState]);
+
+  const handlePrimaryButtonClick = async (
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    await handleStartClick(beginDownloadFlight(event.currentTarget));
+  };
+
+  const handleTorrentStepDownload = async (
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    const flight = beginDownloadFlight(event.currentTarget);
+    const selectedFileIndices = Array.from(selectedTorrentIndices).sort(
+      (a, b) => a - b
+    );
+
+    await handleStartClick(flight, selectedFileIndices, selectedTorrentSize);
+  };
+
+  const handleOpenTorrentStep = async () => {
+    const response = await fetchTorrentFiles();
+    if (response === undefined) return;
+
+    if (
+      selectedDownloader !== Downloader.Torrent &&
+      response &&
+      (response.archiveOnly ||
+        (response.files.length === 1 &&
+          /\.(zip|rar|7z)$/i.test(response.files[0].path)))
+    ) {
+      setSingleArchiveSelectionKey(selectedTorrentKey);
+      setShowTorrentStepModal(false);
+      return;
+    }
+
+    setShowTorrentStepModal(true);
+  };
+
+  const handleRetryFetchTorrentFiles = async () => {
+    await handleOpenTorrentStep();
+  };
+
+  const toggleAllTorrentFiles = () => {
+    if (allTorrentFilesSelected) {
+      clearTorrentSelection();
+      return;
+    }
+
+    selectAllTorrentFiles();
+  };
+
+  const renderFolderRow = (row: FolderTorrentTreeRow) => {
+    const isChecked =
+      row.totalCount > 0 && row.selectedCount === row.totalCount;
+    const isIndeterminate =
+      row.selectedCount > 0 && row.selectedCount < row.totalCount;
+
+    return (
+      <div
+        key={row.key}
+        className={`download-settings-modal__torrent-file-row download-settings-modal__torrent-folder-row ${
+          isChecked ? "download-settings-modal__torrent-file-row--selected" : ""
+        }`}
+      >
+        <span className="download-settings-modal__torrent-file-name-cell">
+          <span
+            className="download-settings-modal__torrent-node-content"
+            style={{ paddingLeft: `${row.depth * 16}px` }}
+          >
+            <button
+              type="button"
+              className="download-settings-modal__torrent-row-trigger"
+              onClick={() => toggleFolderExpanded(row.folderId)}
+            >
+              <span
+                className={`download-settings-modal__torrent-folder-chevron ${
+                  row.expanded
+                    ? "download-settings-modal__torrent-folder-chevron--expanded"
+                    : ""
+                }`}
+              >
+                <ChevronDownIcon size={14} />
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`checkbox-field__checkbox ${
+                isChecked || isIndeterminate ? "checked" : ""
+              } ${
+                isIndeterminate
+                  ? "download-settings-modal__folder-checkbox--indeterminate"
+                  : ""
+              }`}
+              onClick={() => toggleTorrentFolder(row.folderId)}
+            >
+              <span
+                className={`checkbox-field__icon ${
+                  isChecked && !isIndeterminate ? "checked" : ""
+                }`}
+              >
+                <CheckIcon />
+              </span>
+            </button>
+            <FileDirectoryIcon
+              size={14}
+              className="download-settings-modal__torrent-node-icon"
+            />
+            <button
+              type="button"
+              className="download-settings-modal__torrent-row-trigger download-settings-modal__torrent-row-trigger--label"
+              onClick={() => toggleFolderExpanded(row.folderId)}
+              title={row.name}
+            >
+              <span className="download-settings-modal__torrent-file-path download-settings-modal__torrent-file-path--folder">
+                {row.name}
+              </span>
+            </button>
+          </span>
+        </span>
+        <span className="download-settings-modal__torrent-file-size">
+          {formatBytes(row.totalSize)}
+        </span>
+      </div>
+    );
+  };
+
+  const renderFileRow = (row: FileTorrentTreeRow) => (
+    <div
+      key={row.key}
+      className={`download-settings-modal__torrent-file-row ${
+        row.selected
+          ? "download-settings-modal__torrent-file-row--selected"
+          : ""
+      }`}
+    >
+      <span className="download-settings-modal__torrent-file-name-cell">
+        <span
+          className="download-settings-modal__torrent-node-content"
+          style={{ paddingLeft: `${row.depth * 16}px` }}
+        >
+          <span className="download-settings-modal__torrent-folder-spacer" />
+          <button
+            type="button"
+            className={`checkbox-field__checkbox ${row.selected ? "checked" : ""}`}
+            onClick={() => toggleTorrentFile(row.file)}
+          >
+            <span
+              className={`checkbox-field__icon ${row.selected ? "checked" : ""}`}
+            >
+              <CheckIcon />
+            </span>
+          </button>
+          <FileIcon
+            size={14}
+            className="download-settings-modal__torrent-node-icon"
+          />
+          <button
+            type="button"
+            className="download-settings-modal__torrent-row-trigger download-settings-modal__torrent-row-trigger--label"
+            onClick={() => toggleTorrentFile(row.file)}
+            title={row.file.path}
+          >
+            <span className="download-settings-modal__torrent-file-path">
+              {row.name}
+            </span>
+          </button>
+        </span>
+      </span>
+      <span className="download-settings-modal__torrent-file-size">
+        {formatBytes(row.file.length)}
+      </span>
+    </div>
+  );
+
+  const renderTorrentRow = (row: TorrentTreeRow) => {
+    if (row.type === "folder") {
+      return renderFolderRow(row);
+    }
+
+    return renderFileRow(row);
+  };
+
+  const torrentRowsMaxHeight = Math.min(
+    460,
+    Math.max(36, filteredTorrentRows.length * 36)
+  );
+
+  const renderTorrentRowsContent = (): ReactNode => {
+    if (torrentFilesLoading) {
+      return (
+        <div className="download-settings-modal__torrent-files-feedback">
+          {t("loading_torrent_files")}
+        </div>
+      );
+    }
+
+    if (torrentFilesError) {
+      return (
+        <div className="download-settings-modal__torrent-files-feedback">
+          <span>{t(torrentFilesError)}</span>
+          <Button theme="outline" onClick={handleRetryFetchTorrentFiles}>
+            {t("retry_fetch_torrent_files")}
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="download-settings-modal__torrent-files-list">
+        <div
+          className="download-settings-modal__torrent-files-scroll"
+          style={{ maxHeight: `${torrentRowsMaxHeight}px` }}
+        >
+          {filteredTorrentRows.map(renderTorrentRow)}
+        </div>
+      </div>
+    );
+  };
+
+  const getDownloadPathError = (): ReactNode => {
+    if (hasWritePermission === false) {
+      return (
+        <span
+          className="download-settings-modal__path-error"
+          data-open-article="cannot-write-directory"
+        >
+          {t("no_write_permission")}
+        </span>
+      );
+    }
+
+    if (!hasEnoughDiskSpace) {
+      return t("not_enough_space_on_disk", {
+        required: formatBytes(requiredSpace ?? 0),
+        available: formatBytes(diskFreeSpace ?? 0),
+      });
+    }
+
+    return undefined;
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      title={t("download_settings")}
+      description={
+        diskFreeSpace === null
+          ? undefined
+          : t("space_left_on_disk", { space: formatBytes(diskFreeSpace) })
+      }
+      onClose={handleCloseModal}
+    >
+      <div className="download-settings-modal__container">
+        <div className="download-settings-modal__downloads-path-field">
+          <span>{t("downloader")}</span>
+
+          <div className="download-settings-modal__downloaders-list-wrapper">
+            <div className="download-settings-modal__downloaders-list">
+              {downloadOptions.map((option, index) => {
+                const isSelected = selectedDownloader === option.downloader;
+                const tooltipId = `availability-indicator-${option.downloader}`;
+                const isLastItem = index === downloadOptions.length - 1;
+
+                const Indicator = option.isAvailable ? motion.span : "span";
+
+                const isDisabled =
+                  !option.isAvailable && !option.isAvailableButNotConfigured;
+
+                const getAvailabilityIndicator = () => {
+                  if (option.isAvailable) {
+                    return (
+                      <Indicator
+                        className={`download-settings-modal__availability-indicator download-settings-modal__availability-indicator--available download-settings-modal__availability-indicator--pulsating`}
+                        animate={{
+                          scale: [1, 1.1, 1],
+                          opacity: [1, 0.7, 1],
+                        }}
+                        transition={{
+                          duration: 2,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                        }}
+                        data-tooltip-id={tooltipId}
+                        data-tooltip-content={t("downloader_online")}
+                      />
+                    );
+                  }
+
+                  if (option.isAvailableButNotConfigured) {
+                    return (
+                      <span
+                        className={`download-settings-modal__availability-indicator download-settings-modal__availability-indicator--warning`}
+                        data-tooltip-id={tooltipId}
+                        data-tooltip-content={
+                          option.downloader === Downloader.VikingFile
+                            ? t("downloader_requires_hydra_cloud")
+                            : t("downloader_not_configured")
+                        }
+                      />
+                    );
+                  }
+
+                  return (
+                    <span
+                      className={`download-settings-modal__availability-indicator download-settings-modal__availability-indicator--unavailable`}
+                      data-tooltip-id={tooltipId}
+                      data-tooltip-content={t("downloader_offline")}
+                    />
+                  );
+                };
+
+                const getRightContent = () => {
+                  if (isSelected) {
+                    return (
+                      <motion.div
+                        className="download-settings-modal__check-icon-wrapper"
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 300,
+                          damping: 20,
+                        }}
+                      >
+                        <CheckCircleFillIcon
+                          size={16}
+                          className="download-settings-modal__check-icon"
+                        />
+                      </motion.div>
+                    );
+                  }
+
+                  if (option.downloader === Downloader.RealDebrid) {
+                    return (
+                      <div className="download-settings-modal__recommendation-badge">
+                        <Badge>{t("recommended")}</Badge>
+                      </div>
+                    );
+                  }
+
+                  if (
+                    option.downloader === Downloader.VikingFile &&
+                    option.isAvailableButNotConfigured
+                  ) {
+                    return (
+                      <div className="download-settings-modal__recommendation-badge">
+                        <span className="download-settings-modal__hydra-cloud-badge">
+                          Hydra Cloud
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  return null;
+                };
+
+                return (
+                  <div
+                    key={option.downloader}
+                    className="download-settings-modal__downloader-item-wrapper"
+                  >
+                    <button
+                      type="button"
+                      className={`download-settings-modal__downloader-item ${
+                        isSelected
+                          ? "download-settings-modal__downloader-item--selected"
+                          : ""
+                      } ${
+                        isLastItem
+                          ? "download-settings-modal__downloader-item--last"
+                          : ""
+                      }`}
+                      disabled={isDisabled}
+                      onClick={() => {
+                        if (
+                          [
+                            Downloader.RealDebrid,
+                            Downloader.Premiumize,
+                            Downloader.AllDebrid,
+                          ].includes(option.downloader) &&
+                          option.isAvailableButNotConfigured
+                        ) {
+                          setShowRealDebridModal(true);
+                        } else if (
+                          option.downloader === Downloader.VikingFile &&
+                          option.isAvailableButNotConfigured
+                        ) {
+                          showHydraCloudModal("vikingfile");
+                        } else {
+                          setSelectedDownloader(option.downloader);
+                        }
+                      }}
+                    >
+                      <span className="download-settings-modal__downloader-name">
+                        {DOWNLOADER_NAME[option.downloader]}
+                      </span>
+                      <div className="download-settings-modal__availability-indicator-wrapper">
+                        {getAvailabilityIndicator()}
+                      </div>
+                      <Tooltip id={tooltipId} />
+                      {getRightContent()}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {canOpenTorrentStep && isSingleArchive && (
+            <p className="download-settings-modal__single-archive-notice">
+              {t("single_archive_download_notice")}
+            </p>
+          )}
+          {canOpenTorrentStep && !isSingleArchive && (
+            <button
+              type="button"
+              className="download-settings-modal__select-files-link"
+              onClick={handleOpenTorrentStep}
+              disabled={downloadStarting || torrentFilesLoading}
+            >
+              <FileIcon size={12} />
+              <span className="download-settings-modal__select-files-link-text">
+                {t(
+                  torrentFilesLoading
+                    ? "loading_torrent_files"
+                    : "select_files_to_download"
+                )}
+              </span>
+            </button>
+          )}
+        </div>
+
+        <div className="download-settings-modal__downloads-path-field">
+          <TextField
+            value={selectedPath}
+            readOnly
+            disabled
+            label={t("download_path")}
+            error={getDownloadPathError()}
+            rightContent={
+              <Button
+                className="download-settings-modal__change-path-button"
+                theme="outline"
+                onClick={handleChooseDownloadsPath}
+                disabled={downloadStarting}
+              >
+                {t("change")}
+              </Button>
+            }
+          />
+
+          <p className="download-settings-modal__hint-text">
+            <Trans i18nKey="select_folder_hint" ns="game_details">
+              <Link to="/settings" />
+            </Trans>
+          </p>
+        </div>
+
+        <CheckboxField
+          label={t("automatically_extract_downloaded_files")}
+          checked={automaticExtractionEnabled}
+          onChange={() =>
+            setAutomaticExtractionEnabled(!automaticExtractionEnabled)
+          }
+        />
+
+        <CheckboxField
+          label={t("delete_archive_files_after_extraction")}
+          checked={deleteArchiveFilesAfterExtraction}
+          onChange={() =>
+            setDeleteArchiveFilesAfterExtraction(
+              !deleteArchiveFilesAfterExtraction
+            )
+          }
+        />
+
+        <Button
+          onClick={handlePrimaryButtonClick}
+          disabled={
+            downloadStarting ||
+            selectedDownloader === null ||
+            !hasWritePermission ||
+            !hasEnoughDiskSpace ||
+            downloadOptions.some(
+              (option) =>
+                option.downloader === selectedDownloader &&
+                (option.isAvailableButNotConfigured || !option.isAvailable)
+            )
+          }
+        >
+          {getButtonContent()}
+        </Button>
+      </div>
+
+      <RealDebridInfoModal
+        visible={showRealDebridModal}
+        onClose={() => setShowRealDebridModal(false)}
+      />
+
+      <Modal
+        visible={showTorrentStepModal}
+        title={t("torrent_files")}
+        onClose={() => setShowTorrentStepModal(false)}
+        large
+        noContentPadding
+      >
+        <div className="download-settings-modal__torrent-step">
+          <div className="download-settings-modal__torrent-step-toolbar">
+            <TextField
+              placeholder={t("search_torrent_files")}
+              value={torrentFileSearch}
+              onChange={(event) => setTorrentFileSearch(event.target.value)}
+              theme="dark"
+            />
+
+            <div className="download-settings-modal__torrent-filters">
+              <span className="download-settings-modal__torrent-sort-label">
+                {t("sort_by", { ns: "library" })}
+              </span>
+              <SelectField
+                className="download-settings-modal__torrent-sort-select"
+                theme="dark"
+                value={torrentSort.column === "size" ? "size_asc" : "name_asc"}
+                onChange={(event) => {
+                  setTorrentSort(parseTorrentSortOption(event.target.value));
+                }}
+                options={[
+                  {
+                    key: "torrent-name-asc",
+                    value: "name_asc",
+                    label: t("torrent_name_column"),
+                  },
+                  {
+                    key: "torrent-size-asc",
+                    value: "size_asc",
+                    label: t("torrent_size_column"),
+                  },
+                ]}
+              />
+            </div>
+          </div>
+
+          <div className="download-settings-modal__torrent-table">
+            <div className="download-settings-modal__torrent-table-head">
+              <span>{t("torrent_name_column")}</span>
+              <span>{t("torrent_size_column")}</span>
+            </div>
+
+            <button
+              type="button"
+              className="download-settings-modal__torrent-file-row download-settings-modal__torrent-file-row--select-all"
+              onClick={toggleAllTorrentFiles}
+              disabled={torrentFilesLoading || torrentFiles.length === 0}
+            >
+              <span className="download-settings-modal__torrent-file-name-cell">
+                <div
+                  className={`checkbox-field__checkbox ${
+                    allTorrentFilesSelected ? "checked" : ""
+                  }`}
+                >
+                  <span
+                    className={`checkbox-field__icon ${
+                      allTorrentFilesSelected ? "checked" : ""
+                    }`}
+                  >
+                    <CheckIcon />
+                  </span>
+                </div>
+                <span className="download-settings-modal__torrent-file-path download-settings-modal__torrent-file-path--bold">
+                  {t("select_all_files")}
+                </span>
+              </span>
+              <span className="download-settings-modal__torrent-file-size">
+                {formatBytes(selectedTorrentSize)}
+              </span>
+            </button>
+          </div>
+
+          {renderTorrentRowsContent()}
+
+          <div className="download-settings-modal__torrent-files-footer">
+            <span className="download-settings-modal__torrent-files-summary">
+              {t("selected_files")}: {selectedTorrentIndices.size}/
+              {torrentFiles.length}
+              {!hasEnoughDiskSpace && (
+                <span className="download-settings-modal__torrent-files-space-error">
+                  {t("not_enough_space_on_disk", {
+                    required: formatBytes(requiredSpace ?? 0),
+                    available: formatBytes(diskFreeSpace ?? 0),
+                  })}
+                </span>
+              )}
+            </span>
+            <Button
+              onClick={handleTorrentStepDownload}
+              disabled={
+                downloadStarting ||
+                torrentFilesLoading ||
+                !!torrentFilesError ||
+                !hasEnoughDiskSpace ||
+                selectedTorrentIndices.size === 0
+              }
+            >
+              {getButtonContent()}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </Modal>
+  );
+}

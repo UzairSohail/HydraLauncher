@@ -1,0 +1,2309 @@
+import { StarIcon } from "@phosphor-icons/react";
+import {
+  formatNumber,
+  getClassicsLaunchErrorCode,
+  getRegionsFromSkus,
+  getSkuRegionFlag,
+  type SkuRegion,
+} from "@renderer/helpers";
+import type { GameShop, ShopAssets, LibraryGame } from "@types";
+import {
+  hasCloudSaveExecutableSelection,
+  getEpicLaunchOptions,
+  getInstalledStoreMembers,
+  getOfficialStoreMembers,
+  isEpicMemberInCurrentScope,
+  getEpicMemberDownload,
+  isEpicUpdateInterrupted,
+  isLibraryGameDownloading,
+} from "@shared";
+import { useEpicManagedConnection } from "@renderer/hooks/use-epic-managed";
+import { useEpicGameUpdate } from "@renderer/hooks/use-epic-game-update";
+import { useFinishedDownloadStep } from "@renderer/hooks/use-finished-download-step";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useNavigate, useParams } from "react-router-dom";
+import {
+  buildLibraryToastOptions,
+  getBigPictureGameDetailsPath,
+  getItemFocusTarget,
+} from "../../helpers";
+import {
+  getSimilarGamesSectionState,
+  SIMILAR_GAMES_LIMIT,
+} from "@renderer/hooks/similar-games";
+import { useSimilarGames } from "@renderer/hooks/use-similar-games";
+import type { LibraryToastSource } from "../../helpers/library-toast";
+import {
+  Typography,
+  VerticalFocusGroup,
+  Divider,
+  FocusItem,
+  FocusCarousel,
+  Skeleton,
+  EmptyState,
+} from "../../components";
+import {
+  ConfirmationModal,
+  DiscSelectionModal,
+  DownloadGameModal,
+  ExecutablePickerModal,
+  type ExecutablePickerTarget,
+} from "../../components/modals";
+import {
+  AchievementsBox,
+  ControllerSupportBox,
+  GameReviews,
+  GameSettingsModal,
+  Hero,
+  HowLongToBeatBox,
+  PlaytimeBar,
+  ProtonDBSection,
+  RequirementsToPlay,
+  ScreenshotCarousel,
+  GameMyScreenshots,
+  SupportedLanguages,
+} from "../../components/pages/game";
+import { useGameSettingsModalState } from "../../components/pages/game/game-settings-modal/use-game-settings-modal-state";
+import { BigPictureCloudSaveProvider } from "../../components/pages/game/cloud-save-v2";
+import {
+  useBigPictureToast,
+  useGameDetails,
+  useHeaderTitle,
+  useNavigationScreenActions,
+} from "../../hooks";
+import {
+  BIG_PICTURE_SIDEBAR_ITEM_IDS,
+  BIG_PICTURE_SIDEBAR_REGION_ID,
+} from "../../layout";
+import {
+  GAME_COMMENTS_ACTION_ROWS_REGION_ID,
+  GAME_DESCRIPTION_BOTTOM_ENTRY_ID,
+  GAME_DESCRIPTION_BODY_ID,
+  GAME_DESCRIPTION_REGION_ID,
+  GAME_HERO_ACTIONS_REGION_ID,
+  GAME_MEDIA_CAROUSEL_REGION_ID,
+  GAME_PAGE_REGION_ID,
+  GAME_SIMILAR_GAMES_REGION_ID,
+  GAME_SIDEBAR_ACHIEVEMENTS_ID,
+  GAME_SIDEBAR_CONTROLLER_SUPPORT_ID,
+  GAME_SIDEBAR_HLTB_ID,
+  GAME_SIDEBAR_LANGUAGES_ID,
+  GAME_SIDEBAR_METADATA_ID,
+  GAME_SIDEBAR_PROTONDB_ID,
+  GAME_SIDEBAR_REGION_ID,
+  GAME_SIDEBAR_REQUIREMENTS_ID,
+  GAME_SIDEBAR_STATS_ID,
+  getGameSimilarGameItemId,
+} from "../../components/pages/game/navigation";
+import { NavigationService, type FocusOverrideTarget } from "../../services";
+import { useNavigationStore } from "../../stores";
+import { useBigPictureDownloadsStore } from "../../stores/downloads.store";
+import { extractGenreNames } from "./game-metadata";
+import "./game.scss";
+import { EpicCloudSaves } from "../../components/pages/game/epic-cloud-saves";
+import { EpicCloudSaveConflictModal } from "../../components/modals/epic-cloud-save-conflict-modal";
+import { Button, Modal, HorizontalFocusGroup } from "../../components/common";
+import {
+  canRetryEpicLaunchWithLocalSaves,
+  getEpicLaunchError,
+  getEpicManagedError,
+} from "@renderer/helpers/epic-managed-error";
+
+const DESCRIPTION_HEADING_SELECTOR = "h1, h2, h3, h4, h5, h6";
+const DESCRIPTION_MEDIA_SELECTOR = "img, video";
+const DESCRIPTION_MEDIA_SOURCE_SELECTOR = "img, video, source, track";
+const DESCRIPTION_RENDERABLE_SELECTOR = [
+  DESCRIPTION_HEADING_SELECTOR,
+  DESCRIPTION_MEDIA_SELECTOR,
+  "p",
+  "ul",
+  "ol",
+  "blockquote",
+  "table",
+  "pre",
+  "hr",
+].join(", ");
+const DESCRIPTION_DISALLOWED_SELECTORS = [
+  "script",
+  "style",
+  "iframe",
+  "object",
+  "embed",
+  "link",
+  "meta",
+].join(", ");
+const DESCRIPTION_PARAGRAPH_BREAK = /(?:\r?\n){2,}/;
+const DESCRIPTION_LINE_BREAK = /\r?\n/;
+const DESCRIPTION_SCROLL_STEP = 180;
+const DESCRIPTION_SCROLL_EDGE_TOLERANCE = 4;
+const DESCRIPTION_FOCUS_ENTRY_MARGIN = 32;
+const DESCRIPTION_SCROLL_ANIMATION_DURATION = 220;
+const DESCRIPTION_RETURN_MIN_VISIBLE_RATIO = 0.5;
+type ClassicsLaunchErrorCode = NonNullable<
+  ReturnType<typeof getClassicsLaunchErrorCode>
+>;
+
+interface ClassicsLaunchNotice {
+  title: string;
+  message: string;
+  kind: "error" | "success";
+  opensSettings?: boolean;
+}
+
+const CLASSICS_LAUNCH_FALLBACK: ClassicsLaunchNotice = {
+  title: "Launch failed",
+  message: "Hydra could not launch this Classics game.",
+  kind: "error",
+};
+
+const CLASSICS_LAUNCH_NOTICES: Partial<
+  Record<ClassicsLaunchErrorCode, ClassicsLaunchNotice>
+> = {
+  EMULATOR_NOT_CONFIGURED: {
+    title: "Emulator not configured",
+    message: "Configure the emulator for this platform before launching.",
+    kind: "error",
+    opensSettings: true,
+  },
+  BIOS_NOT_CONFIGURED: {
+    title: "BIOS not configured",
+    message: "Add the BIOS files for this platform before launching.",
+    kind: "error",
+    opensSettings: true,
+  },
+  RETROARCH_NOT_CONFIGURED: {
+    title: "RetroArch not configured",
+    message: "Configure RetroArch before launching this game.",
+    kind: "error",
+    opensSettings: true,
+  },
+  CORE_NOT_INSTALLED: {
+    title: "Core not installed",
+    message: "Download the RetroArch core for this platform before launching.",
+    kind: "error",
+    opensSettings: true,
+  },
+  PLATFORM_UNKNOWN: {
+    title: "Platform not supported",
+    message: "Hydra could not identify an emulator for this platform.",
+    kind: "error",
+  },
+  RECOMPILATION_NEEDS_SETUP: {
+    title: "PC version not ready",
+    message: "Open this game in Hydra to choose the ROM for its PC version.",
+    kind: "error",
+  },
+  NO_DISC: {
+    title: "No disc found",
+    message: "Add or rescan discs for this Classics game before launching.",
+    kind: "error",
+  },
+  PKG_INSTALLING: {
+    title: "Installing PKG",
+    message:
+      "Installing the package in RPCS3. Once it finishes, press Play again to launch the game.",
+    kind: "success",
+  },
+  PKG_UNREADABLE: {
+    title: "Unsupported PKG",
+    message:
+      "Hydra could not read this package. Install and launch it from RPCS3 directly.",
+    kind: "error",
+  },
+};
+
+const REGION_LABELS: Record<SkuRegion, string> = {
+  US: "United States",
+  EU: "Europe",
+  JP: "Japan",
+  KR: "Korea",
+  ASIA: "Asia",
+};
+
+function easeOutCubic(progress: number) {
+  return 1 - Math.pow(1 - progress, 3);
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function normalizeDescriptionUrl(url: string) {
+  return url.startsWith("http://") ? url.replace("http://", "https://") : url;
+}
+
+function isUnsafeDescriptionUrl(url: string) {
+  return /^(javascript|data):/i.test(url.trim());
+}
+
+function sanitizeDescriptionAttribute(element: Element, attribute: Attr) {
+  const name = attribute.name.toLowerCase();
+  const value = attribute.value.trim();
+
+  if (name.startsWith("on") || name === "style") {
+    element.removeAttribute(attribute.name);
+    return;
+  }
+
+  if (name !== "href" && name !== "src") {
+    return;
+  }
+
+  if (!value || isUnsafeDescriptionUrl(value)) {
+    element.removeAttribute(attribute.name);
+    return;
+  }
+
+  element.setAttribute(attribute.name, normalizeDescriptionUrl(value));
+}
+
+function normalizeDescriptionMediaElement(
+  mediaElement: HTMLImageElement | HTMLVideoElement
+) {
+  mediaElement.removeAttribute("width");
+  mediaElement.removeAttribute("height");
+  mediaElement.removeAttribute("style");
+  mediaElement.style.maxWidth = "100%";
+  mediaElement.style.width = "100%";
+  mediaElement.style.height = "auto";
+  mediaElement.style.boxSizing = "border-box";
+}
+
+function appendDescriptionParagraph(
+  document: Document,
+  fragment: DocumentFragment,
+  block: string
+) {
+  const lines = block
+    .split(DESCRIPTION_LINE_BREAK)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (lines.length === 0) {
+    return;
+  }
+
+  const paragraph = document.createElement("p");
+
+  lines.forEach((line, index) => {
+    if (index > 0) {
+      paragraph.appendChild(document.createElement("br"));
+    }
+
+    paragraph.appendChild(document.createTextNode(line));
+  });
+
+  fragment.appendChild(paragraph);
+}
+
+function wrapLooseDescriptionText(document: Document) {
+  const looseTextNodes = Array.from(document.body.childNodes).filter(
+    (node) =>
+      node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim())
+  );
+
+  for (const textNode of looseTextNodes) {
+    const fragment = document.createDocumentFragment();
+
+    for (const block of (textNode.textContent ?? "").split(
+      DESCRIPTION_PARAGRAPH_BREAK
+    )) {
+      appendDescriptionParagraph(document, fragment, block);
+    }
+
+    if (fragment.childNodes.length === 0) {
+      continue;
+    }
+
+    textNode.replaceWith(fragment);
+  }
+}
+
+function preprocessSteamDescriptionDocument(html: string) {
+  if (!html) {
+    return null;
+  }
+
+  const parser = new DOMParser();
+  const document = parser.parseFromString(html, "text/html");
+
+  for (const element of document.querySelectorAll(
+    DESCRIPTION_DISALLOWED_SELECTORS
+  )) {
+    element.remove();
+  }
+
+  for (const element of document.querySelectorAll("code, pre")) {
+    const textNode = document.createTextNode(element.textContent || "");
+    element.replaceWith(textNode);
+  }
+
+  for (const element of document.querySelectorAll("*")) {
+    for (const attribute of Array.from(element.attributes)) {
+      sanitizeDescriptionAttribute(element, attribute);
+    }
+  }
+
+  const images = Array.from(document.querySelectorAll("img"));
+  images.forEach((image) => {
+    image.loading = "lazy";
+    normalizeDescriptionMediaElement(image);
+  });
+
+  const videos = Array.from(document.querySelectorAll("video"));
+  videos.forEach((video) => {
+    video.muted = true;
+    video.playsInline = true;
+    video.setAttribute("muted", "");
+    video.setAttribute("playsinline", "");
+    normalizeDescriptionMediaElement(video);
+  });
+
+  wrapLooseDescriptionText(document);
+
+  return document;
+}
+
+function hasRenderableDescriptionContent(element: Element) {
+  const hasText = Boolean(element.textContent?.trim());
+  const hasRenderableDescendants =
+    element.matches(DESCRIPTION_RENDERABLE_SELECTOR) ||
+    Boolean(element.querySelector(DESCRIPTION_RENDERABLE_SELECTOR));
+
+  return hasText || hasRenderableDescendants;
+}
+
+function isDescriptionHeadingElement(element: Element) {
+  return element.matches(DESCRIPTION_HEADING_SELECTOR);
+}
+
+function isDescriptionMediaElement(element: Element) {
+  if (element.matches(DESCRIPTION_MEDIA_SELECTOR)) {
+    return true;
+  }
+
+  const hasMediaDescendant = Boolean(
+    element.querySelector(DESCRIPTION_MEDIA_SELECTOR)
+  );
+
+  if (!hasMediaDescendant) {
+    return false;
+  }
+
+  const mediaLessClone = element.cloneNode(true) as Element;
+  mediaLessClone
+    .querySelectorAll(DESCRIPTION_MEDIA_SOURCE_SELECTOR)
+    .forEach((mediaElement) => mediaElement.remove());
+
+  const hasNestedHeading = Boolean(
+    element.querySelector(DESCRIPTION_HEADING_SELECTOR)
+  );
+  const hasNestedTextBlocks = Boolean(
+    element.querySelector("p, ul, ol, blockquote, table, pre")
+  );
+  const hasMeaningfulText = Boolean(mediaLessClone.textContent?.trim());
+
+  return !hasNestedHeading && !hasNestedTextBlocks && !hasMeaningfulText;
+}
+
+function isDescriptionStructuralElement(element: Element) {
+  return element.matches("hr");
+}
+
+function buildDescriptionSections(document: Document | null) {
+  if (!document) {
+    return [];
+  }
+
+  const elements = Array.from(document.body.children).filter(
+    hasRenderableDescriptionContent
+  );
+  const sections: string[] = [];
+  let currentSectionHtml: string[] = [];
+
+  const flushCurrentSection = () => {
+    if (currentSectionHtml.length === 0) {
+      return;
+    }
+
+    sections.push(currentSectionHtml.join(""));
+    currentSectionHtml = [];
+  };
+
+  for (const element of elements) {
+    if (isDescriptionStructuralElement(element)) {
+      if (currentSectionHtml.length > 0) {
+        currentSectionHtml.push(element.outerHTML);
+      }
+
+      continue;
+    }
+
+    if (isDescriptionMediaElement(element)) {
+      flushCurrentSection();
+      sections.push(element.outerHTML);
+      continue;
+    }
+
+    if (isDescriptionHeadingElement(element)) {
+      flushCurrentSection();
+      currentSectionHtml.push(element.outerHTML);
+      continue;
+    }
+
+    currentSectionHtml.push(element.outerHTML);
+  }
+
+  flushCurrentSection();
+
+  return sections;
+}
+
+function SimilarGamesSkeleton({ title }: Readonly<{ title: string }>) {
+  return (
+    <section
+      className="focus-carousel game-page__similar-games-skeleton"
+      data-card-variant="vertical"
+      aria-label={title}
+      aria-busy="true"
+    >
+      <div className="focus-carousel__header">
+        <h2 className="focus-carousel__title">{title}</h2>
+        <div
+          className="game-page__similar-games-skeleton-actions"
+          aria-hidden="true"
+        >
+          <Skeleton />
+          <Skeleton />
+        </div>
+      </div>
+
+      <div className="focus-carousel__viewport-wrapper">
+        <div className="focus-carousel__viewport">
+          <div className="focus-carousel__container">
+            {Array.from({ length: SIMILAR_GAMES_LIMIT }, (_, index) => (
+              <article
+                className="focus-carousel__slide"
+                key={`similar-game-skeleton-${index}`}
+              >
+                <div className="game-page__similar-games-skeleton-card">
+                  <Skeleton className="game-page__similar-games-skeleton-cover" />
+                  <div className="game-page__similar-games-skeleton-body">
+                    <Skeleton className="game-page__similar-games-skeleton-title" />
+                    <Skeleton className="game-page__similar-games-skeleton-subtitle" />
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SimilarGamesEmptyState({
+  title,
+  message,
+}: Readonly<{ title: string; message: string }>) {
+  return (
+    <section className="focus-carousel game-page__similar-games-empty">
+      <div className="focus-carousel__header">
+        <h2 className="focus-carousel__title">{title}</h2>
+      </div>
+
+      <EmptyState
+        className="game-page__similar-games-empty-state"
+        title={message}
+      />
+    </section>
+  );
+}
+
+export default function Game() {
+  const { t } = useTranslation("big_picture");
+  const { showErrorToast, showSuccessToast, showWarningToast } =
+    useBigPictureToast();
+  const { shop, objectId } = useParams<{ shop: GameShop; objectId: string }>();
+  const navigate = useNavigate();
+
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [isDiscSelectionModalOpen, setIsDiscSelectionModalOpen] =
+    useState(false);
+  const [isGameSettingsModalOpen, setIsGameSettingsModalOpen] = useState(false);
+  const [pendingClassicsLaunch, setPendingClassicsLaunch] = useState<{
+    discPath?: string;
+  } | null>(null);
+  const [isAddingToLibrary, setIsAddingToLibrary] = useState(false);
+  const [hasNavigableComments, setHasNavigableComments] = useState(false);
+  const [activeMediaItemId, setActiveMediaItemId] = useState<string | null>(
+    null
+  );
+  const navigation = NavigationService.getInstance();
+  const pageRef = useRef<HTMLDivElement | null>(null);
+  const descriptionContainerRef = useRef<HTMLDivElement | null>(null);
+  const previousFocusIdRef = useRef<string | null>(null);
+  const lastMainContentFocusIdRef = useRef<string | null>(null);
+  const descriptionScrollAnimationFrameRef = useRef<number | null>(null);
+  const preserveDescriptionScrollOnNextBodyFocusRef = useRef(false);
+  const currentFocusId = useNavigationStore((state) => state.currentFocusId);
+  const navigationNodes = useNavigationStore((state) => state.nodes);
+  const navigationRegions = useNavigationStore((state) => state.regions);
+  const navigationNodesById = useMemo(
+    () => new Map(navigationNodes.map((node) => [node.id, node])),
+    [navigationNodes]
+  );
+  const navigationRegionsById = useMemo(
+    () => new Map(navigationRegions.map((region) => [region.id, region])),
+    [navigationRegions]
+  );
+  const isRegionWithinTree = useCallback(
+    (regionId: string | null, targetRegionId: string) => {
+      let currentRegionId = regionId;
+
+      while (currentRegionId) {
+        if (currentRegionId === targetRegionId) {
+          return true;
+        }
+
+        currentRegionId =
+          navigationRegionsById.get(currentRegionId)?.parentRegionId ?? null;
+      }
+
+      return false;
+    },
+    [navigationRegionsById]
+  );
+  const isMainContentFocusId = useCallback(
+    (focusId: string | null) => {
+      if (!focusId) {
+        return false;
+      }
+
+      const regionId = navigationNodesById.get(focusId)?.regionId ?? null;
+
+      if (!isRegionWithinTree(regionId, GAME_PAGE_REGION_ID)) {
+        return false;
+      }
+
+      return (
+        !isRegionWithinTree(regionId, GAME_SIDEBAR_REGION_ID) &&
+        !isRegionWithinTree(regionId, BIG_PICTURE_SIDEBAR_REGION_ID)
+      );
+    },
+    [isRegionWithinTree, navigationNodesById]
+  );
+  const {
+    shopDetails,
+    game,
+    presentationGame,
+    downloadGame,
+    catalogueGame,
+    stats,
+    isGameRunning,
+    runningSessionDurationInMillis,
+    isLoading,
+    howLongToBeat,
+    protonDBData,
+    achievements,
+    preferredAssets,
+    openGame,
+    closeGame,
+    toggleFavorite,
+    updateGame,
+    refreshGameDetails,
+  } = useGameDetails(objectId!, shop!);
+  const members = presentationGame?.members ?? (game ? [game] : []);
+  const installedMembers = getInstalledStoreMembers(members);
+  const epicMember = getOfficialStoreMembers(members).epic;
+  const [showStoreSelection, setShowStoreSelection] = useState(false);
+  const [showEpicUpdate, setShowEpicUpdate] = useState(false);
+  const lastPacket = useBigPictureDownloadsStore((state) => state.lastPacket);
+  const { installationAvailable: epicInstallationAvailable, connection } =
+    useEpicManagedConnection();
+  const installedEpicMember =
+    epicMember?.epicInstallation && epicMember.executablePath
+      ? epicMember
+      : null;
+  const epicDownload = getEpicMemberDownload(installedEpicMember, downloadGame);
+  const epicUpdate = useEpicGameUpdate(
+    installedEpicMember,
+    epicInstallationAvailable &&
+      isEpicMemberInCurrentScope(installedEpicMember, connection),
+    epicDownload?.status
+  );
+  const epicUpdateInterrupted =
+    !!epicDownload && isEpicUpdateInterrupted(epicDownload);
+  const epicUpdateInProgress =
+    !!epicDownload?.epic?.update &&
+    (isLibraryGameDownloading({ download: epicDownload }) ||
+      !!epicDownload.queued);
+  const refreshEpicUpdate = epicUpdate.refresh;
+  const requestEpicUpdate = epicUpdate.start;
+  const [localSaveRetry, setLocalSaveRetry] = useState<{
+    member: LibraryGame;
+    skipUpdateCheck: boolean;
+  } | null>(null);
+  const [epicSaveConflict, setEpicSaveConflict] = useState<LibraryGame | null>(
+    null
+  );
+  const [canRetryOffline, setCanRetryOffline] = useState(false);
+  const [canRetryLocalSaves, setCanRetryLocalSaves] = useState(false);
+  const launchGeneration = useRef(0);
+  const invalidateLaunch = useCallback(() => {
+    launchGeneration.current++;
+  }, []);
+  useEffect(() => {
+    const invalidate = () => {
+      invalidateLaunch();
+      setShowStoreSelection(false);
+      setLocalSaveRetry(null);
+      setEpicSaveConflict(null);
+    };
+    invalidate();
+    const stop = window.electron?.onEpicConnectionChanged?.(invalidate);
+    return () => {
+      invalidateLaunch();
+      stop?.();
+    };
+  }, [shop, objectId, invalidateLaunch]);
+  const offerEpicLaunchRecovery = useCallback(
+    async (
+      member: LibraryGame,
+      generation: number,
+      skipUpdateCheck: boolean
+    ) => {
+      if (typeof window.electron.getEpicCloudSaveState !== "function") return;
+      const state = await window.electron
+        .getEpicCloudSaveState(member.objectId)
+        .catch(() => null);
+      if (generation !== launchGeneration.current) return;
+      if (state?.status === "conflict") {
+        setEpicSaveConflict(member);
+        return;
+      }
+      if (
+        canRetryEpicLaunchWithLocalSaves(state) ||
+        state?.canRunOffline === true
+      ) {
+        setLocalSaveRetry({ member, skipUpdateCheck });
+        setCanRetryOffline(state?.canRunOffline === true);
+        setCanRetryLocalSaves(canRetryEpicLaunchWithLocalSaves(state));
+      }
+    },
+    []
+  );
+  const reportLaunchFailure = useCallback(
+    async (
+      member: LibraryGame,
+      error: unknown,
+      generation: number,
+      skipUpdateCheck: boolean
+    ) => {
+      const code =
+        member.shop === "epic" ? getEpicLaunchError(error) : undefined;
+      if (code === "save-conflict") {
+        setEpicSaveConflict(member);
+        return;
+      }
+      if (code === "update-required") void refreshEpicUpdate(true);
+      const translation = code ? getEpicManagedError(code) : null;
+      showErrorToast(
+        translation
+          ? t(translation.key, { ns: translation.ns })
+          : t("epic_launch_failed", { ns: "game_details" })
+      );
+      if (member.shop === "epic")
+        await offerEpicLaunchRecovery(member, generation, skipUpdateCheck);
+    },
+    [showErrorToast, t, refreshEpicUpdate, offerEpicLaunchRecovery]
+  );
+  const launchMember = useCallback(
+    async (
+      member: LibraryGame,
+      localOnce = false,
+      offline = false,
+      skipUpdateCheck = false
+    ) => {
+      if (!member.executablePath) return;
+      setShowStoreSelection(false);
+      setLocalSaveRetry(null);
+      setEpicSaveConflict(null);
+      setCanRetryOffline(false);
+      setCanRetryLocalSaves(false);
+      const generation = launchGeneration.current;
+      try {
+        await window.electron.openGame(
+          member.shop,
+          member.objectId,
+          member.executablePath,
+          member.launchOptions,
+          getEpicLaunchOptions(localOnce, offline, skipUpdateCheck)
+        );
+      } catch (error) {
+        if (generation !== launchGeneration.current) return;
+        await reportLaunchFailure(member, error, generation, skipUpdateCheck);
+      }
+    },
+    [reportLaunchFailure]
+  );
+  const playEpicMember = useCallback(
+    (member: LibraryGame) => {
+      setShowStoreSelection(false);
+      if (epicUpdateInProgress) {
+        showWarningToast(t("epic_updating", { ns: "game_details" }));
+        return;
+      }
+      if (epicUpdate.update || epicUpdateInterrupted) {
+        setShowEpicUpdate(true);
+        return;
+      }
+      void launchMember(member);
+    },
+    [
+      epicUpdate.update,
+      epicUpdateInterrupted,
+      epicUpdateInProgress,
+      launchMember,
+      showWarningToast,
+      t,
+    ]
+  );
+  const startEpicUpdate = useCallback(
+    async (resume = false) => {
+      setShowEpicUpdate(false);
+      const result = await requestEpicUpdate(lastPacket !== null, resume);
+      if (result.ok) {
+        await updateGame();
+        globalThis.window.dispatchEvent(new Event("library-update"));
+        return;
+      }
+      const translation = getEpicManagedError(result.error);
+      showErrorToast(t("epic_update_failed", { ns: "game_details" }), {
+        message: t(translation.key, { ns: translation.ns }),
+      });
+    },
+    [requestEpicUpdate, lastPacket, updateGame, showErrorToast, t]
+  );
+  const resumeEpicUpdate = useCallback(async () => {
+    if (!installedEpicMember) return;
+    if (epicDownload?.status !== "paused" && epicDownload?.status !== "error") {
+      await startEpicUpdate(true);
+      return;
+    }
+    setShowEpicUpdate(false);
+    try {
+      const resumed = await window.electron.resumeGameDownload(
+        installedEpicMember.shop,
+        installedEpicMember.objectId,
+        "queueIfActive"
+      );
+      if (resumed === false)
+        showErrorToast(t("epic_update_failed", { ns: "game_details" }));
+    } catch {
+      showErrorToast(t("epic_update_failed", { ns: "game_details" }));
+    }
+    await updateGame();
+  }, [
+    installedEpicMember,
+    epicDownload?.status,
+    startEpicUpdate,
+    showErrorToast,
+    t,
+    updateGame,
+  ]);
+  const { launchSettings, customizationSettings, cloudSettings } =
+    useGameSettingsModalState({
+      game,
+      visible: isGameSettingsModalOpen,
+      updateGame,
+      refreshGameDetails,
+    });
+  const canAddToLibrary = shop !== "custom";
+  const resolvedGameTitle =
+    preferredAssets.title || game?.title || "Download Game";
+  const gameToastSource = useMemo<LibraryToastSource>(
+    () => ({
+      objectId: objectId ?? "",
+      shop: shop ?? "steam",
+      title: resolvedGameTitle,
+      iconUrl: preferredAssets.iconUrl,
+      customIconUrl: null,
+      libraryHeroImageUrl: preferredAssets.libraryHeroImageUrl,
+      customHeroImageUrl: null,
+      libraryImageUrl: preferredAssets.libraryImageUrl,
+      logoImageUrl: preferredAssets.logoImageUrl,
+      customLogoImageUrl: null,
+      logoPosition: preferredAssets.logoPosition,
+      coverImageUrl: preferredAssets.coverImageUrl,
+      downloadSources: preferredAssets.downloadSources,
+    }),
+    [objectId, preferredAssets, resolvedGameTitle, shop]
+  );
+  const shouldShowProtonSection =
+    Boolean(protonDBData) &&
+    (import.meta.env.DEV || globalThis.window.electron?.platform === "linux");
+  const descriptionBlocks = useMemo(() => {
+    const document = preprocessSteamDescriptionDocument(
+      shopDetails?.detailed_description ?? ""
+    );
+
+    return buildDescriptionSections(document);
+  }, [shopDetails?.detailed_description]);
+  const hasDescription = descriptionBlocks.length > 0;
+  const hasMedia =
+    (shopDetails?.movies?.length ?? 0) > 0 ||
+    (shopDetails?.screenshots?.length ?? 0) > 0;
+  const isLaunchboxGame = shop === "launchbox";
+  const isCustomGame = shop === "custom";
+  const developer = shopDetails?.developers?.[0] ?? "";
+  const publisher = shopDetails?.publishers?.[0] ?? "";
+  const releaseDate = shopDetails?.release_date?.date ?? "";
+  const shopGenres = useMemo(() => {
+    return extractGenreNames(shopDetails?.genres ?? []);
+  }, [shopDetails?.genres]);
+  const {
+    games: similarGames,
+    isLoading: areSimilarGamesLoading,
+    isEligible: areSimilarGamesEligible,
+  } = useSimilarGames({
+    objectId: catalogueGame.objectId,
+    shop: catalogueGame.shop,
+  });
+  const similarCarouselGames = useMemo<ShopAssets[]>(
+    () =>
+      similarGames.map((similarGame) => ({
+        objectId: similarGame.objectId,
+        shop: similarGame.shop,
+        title: similarGame.title,
+        iconUrl: similarGame.iconUrl,
+        libraryHeroImageUrl: similarGame.libraryHeroImageUrl,
+        libraryImageUrl: similarGame.libraryImageUrl,
+        logoImageUrl: similarGame.logoImageUrl,
+        logoPosition: null,
+        coverImageUrl: similarGame.coverImageUrl,
+        downloadSources: similarGame.downloadSources,
+      })),
+    [similarGames]
+  );
+  const similarGamesSectionState = getSimilarGamesSectionState(
+    areSimilarGamesEligible,
+    areSimilarGamesLoading,
+    similarCarouselGames.length
+  );
+  const hasSimilarGames = similarGamesSectionState === "ready";
+  const shouldRenderSimilarGames = similarGamesSectionState !== "hidden";
+  const launchboxRegions = useMemo(
+    () =>
+      shopDetails?.skus && shopDetails.skus.length > 0
+        ? getRegionsFromSkus(shopDetails.skus)
+        : [],
+    [shopDetails?.skus]
+  );
+  const descriptionEntryTarget = useMemo(
+    () =>
+      hasDescription ? getItemFocusTarget(GAME_DESCRIPTION_BODY_ID) : undefined,
+    [hasDescription]
+  );
+  const descriptionBottomEntryTarget = useMemo(
+    () =>
+      hasDescription
+        ? getItemFocusTarget(GAME_DESCRIPTION_BOTTOM_ENTRY_ID)
+        : undefined,
+    [hasDescription]
+  );
+  const commentsEntryTarget = useMemo(() => {
+    if (!hasNavigableComments) {
+      return undefined;
+    }
+
+    return {
+      type: "region" as const,
+      regionId: GAME_COMMENTS_ACTION_ROWS_REGION_ID,
+      entryDirection: "down" as const,
+      preferRememberedFocus: true,
+    };
+  }, [hasNavigableComments]);
+  const similarGamesEntryTarget = useMemo(() => {
+    if (!hasSimilarGames) return undefined;
+
+    return {
+      type: "region" as const,
+      regionId: GAME_SIMILAR_GAMES_REGION_ID,
+      entryDirection: "down" as const,
+      preferRememberedFocus: true,
+    };
+  }, [hasSimilarGames]);
+  const bodyUpNavigationTarget = useMemo<FocusOverrideTarget>(() => {
+    if (activeMediaItemId) {
+      return getItemFocusTarget(activeMediaItemId);
+    }
+
+    if (hasMedia) {
+      return {
+        type: "region",
+        regionId: GAME_MEDIA_CAROUSEL_REGION_ID,
+        entryDirection: "up",
+        preferRememberedFocus: true,
+      };
+    }
+
+    return {
+      type: "region",
+      regionId: GAME_HERO_ACTIONS_REGION_ID,
+      entryDirection: "up",
+      preferRememberedFocus: true,
+    };
+  }, [activeMediaItemId, hasMedia]);
+  const sidebarStatsEntryTarget = useMemo(
+    () => getItemFocusTarget(GAME_SIDEBAR_STATS_ID),
+    []
+  );
+  const bodyRightNavigationTarget = useMemo<FocusOverrideTarget>(
+    () => sidebarStatsEntryTarget,
+    [sidebarStatsEntryTarget]
+  );
+  const contentBelowHeroTarget = useMemo(() => {
+    if (activeMediaItemId) {
+      return getItemFocusTarget(activeMediaItemId);
+    }
+
+    if (hasMedia) {
+      return {
+        type: "region" as const,
+        regionId: GAME_MEDIA_CAROUSEL_REGION_ID,
+        entryDirection: "down" as const,
+        preferRememberedFocus: true,
+      };
+    }
+
+    return (
+      descriptionEntryTarget ?? similarGamesEntryTarget ?? commentsEntryTarget
+    );
+  }, [
+    activeMediaItemId,
+    commentsEntryTarget,
+    descriptionEntryTarget,
+    hasMedia,
+    similarGamesEntryTarget,
+  ]);
+  const sidebarEntryTarget = useMemo(
+    () => sidebarStatsEntryTarget,
+    [sidebarStatsEntryTarget]
+  );
+  const heroActionsLeftNavigationTarget = useMemo(
+    () => ({
+      type: "region" as const,
+      regionId: GAME_HERO_ACTIONS_REGION_ID,
+      entryDirection: "left" as const,
+      preferRememberedFocus: true,
+    }),
+    []
+  );
+  const commentsTopNavigationTarget = useMemo(() => {
+    if (similarGamesEntryTarget) {
+      return {
+        ...similarGamesEntryTarget,
+        entryDirection: "up" as const,
+      };
+    }
+
+    if (descriptionBottomEntryTarget) {
+      return descriptionBottomEntryTarget;
+    }
+
+    if (hasMedia) {
+      return contentBelowHeroTarget ?? heroActionsLeftNavigationTarget;
+    }
+
+    return heroActionsLeftNavigationTarget;
+  }, [
+    contentBelowHeroTarget,
+    descriptionBottomEntryTarget,
+    hasMedia,
+    heroActionsLeftNavigationTarget,
+    similarGamesEntryTarget,
+  ]);
+
+  const similarGamesTopNavigationTarget = useMemo<FocusOverrideTarget>(() => {
+    if (descriptionBottomEntryTarget) return descriptionBottomEntryTarget;
+    if (activeMediaItemId) return getItemFocusTarget(activeMediaItemId);
+
+    if (hasMedia) {
+      return {
+        type: "region",
+        regionId: GAME_MEDIA_CAROUSEL_REGION_ID,
+        entryDirection: "up",
+        preferRememberedFocus: true,
+      };
+    }
+
+    return heroActionsLeftNavigationTarget;
+  }, [
+    activeMediaItemId,
+    descriptionBottomEntryTarget,
+    hasMedia,
+    heroActionsLeftNavigationTarget,
+  ]);
+
+  const getSimilarGameNavigationOverrides = useCallback(
+    (_similarGame: ShopAssets, index: number, games: ShopAssets[]) => ({
+      up: similarGamesTopNavigationTarget,
+      down: commentsEntryTarget ?? ({ type: "block" } as const),
+      ...(index === 0
+        ? { left: getItemFocusTarget(BIG_PICTURE_SIDEBAR_ITEM_IDS.home) }
+        : {}),
+      ...(index === games.length - 1
+        ? { right: { type: "block" as const } }
+        : {}),
+    }),
+    [commentsEntryTarget, similarGamesTopNavigationTarget]
+  );
+  const getSimilarGameItemId = useCallback(
+    (similarGame: ShopAssets) =>
+      getGameSimilarGameItemId(
+        shop!,
+        objectId!,
+        similarGame.shop,
+        similarGame.objectId
+      ),
+    [objectId, shop]
+  );
+  useHeaderTitle(resolvedGameTitle);
+
+  const handleOpenDownloadModal = useCallback(() => {
+    setIsDownloadModalOpen(true);
+  }, []);
+
+  const installStep = useFinishedDownloadStep(downloadGame);
+  const [executablePickerTarget, setExecutablePickerTarget] =
+    useState<ExecutablePickerTarget | null>(null);
+
+  const handleInstall = useCallback(async () => {
+    if (!downloadGame) return;
+
+    const opened = await globalThis.window.electron.openGameInstaller(
+      downloadGame.shop,
+      downloadGame.objectId
+    );
+
+    if (!opened) {
+      showErrorToast(t("installer_launch_failed", { ns: "downloads" }));
+    }
+
+    await refreshGameDetails();
+  }, [downloadGame, refreshGameDetails, showErrorToast, t]);
+
+  const handleExtract = useCallback(async () => {
+    if (!downloadGame) return;
+
+    await globalThis.window.electron.extractGameDownload(
+      downloadGame.shop,
+      downloadGame.objectId
+    );
+    globalThis.window.dispatchEvent(new Event("library-update"));
+    await refreshGameDetails();
+  }, [downloadGame, refreshGameDetails]);
+
+  const handleSelectExecutable = useCallback(() => {
+    if (!downloadGame) return;
+
+    setExecutablePickerTarget({
+      shop: downloadGame.shop,
+      objectId: downloadGame.objectId,
+    });
+  }, [downloadGame]);
+
+  const handleCloseExecutablePicker = useCallback(() => {
+    setExecutablePickerTarget(null);
+  }, []);
+
+  const handleExecutableSaved = useCallback(() => {
+    void refreshGameDetails();
+  }, [refreshGameDetails]);
+
+  const handleCloseDownloadModal = useCallback(() => {
+    setIsDownloadModalOpen(false);
+  }, []);
+
+  const handleAddToLibrary = useCallback(async () => {
+    if (
+      !shop ||
+      !objectId ||
+      !canAddToLibrary ||
+      game ||
+      isAddingToLibrary ||
+      !shopDetails
+    ) {
+      return;
+    }
+
+    setIsAddingToLibrary(true);
+
+    try {
+      await globalThis.window.electron.addGameToLibrary(
+        shop,
+        objectId,
+        resolvedGameTitle,
+        shopDetails.platform ?? null
+      );
+      await updateGame();
+      globalThis.window.dispatchEvent(new Event("library-update"));
+
+      const { title, ...toastOptions } = await buildLibraryToastOptions(
+        gameToastSource,
+        "added"
+      );
+      showSuccessToast(title, toastOptions);
+    } finally {
+      setIsAddingToLibrary(false);
+    }
+  }, [
+    canAddToLibrary,
+    game,
+    gameToastSource,
+    isAddingToLibrary,
+    objectId,
+    resolvedGameTitle,
+    shop,
+    showSuccessToast,
+    shopDetails,
+    updateGame,
+  ]);
+
+  const launchClassicsWithErrorHandling = useCallback(
+    async (discPath?: string, force?: boolean) => {
+      if (!game) return;
+
+      try {
+        await openGame(discPath, force);
+        await updateGame();
+        globalThis.window.dispatchEvent(new Event("library-update"));
+      } catch (error) {
+        const code = getClassicsLaunchErrorCode(error);
+
+        if (code === "EMULATOR_ALREADY_RUNNING") {
+          setPendingClassicsLaunch({ discPath });
+          return;
+        }
+
+        // The port is already open: nothing failed.
+        if (code === "RECOMPILATION_ALREADY_RUNNING") return;
+
+        const notice =
+          (code && CLASSICS_LAUNCH_NOTICES[code]) ?? CLASSICS_LAUNCH_FALLBACK;
+
+        const options = notice.opensSettings
+          ? {
+              message: notice.message,
+              fallbackVisual: "settings" as const,
+              action: {
+                label: "Open Settings",
+                onClick: () => navigate("/settings"),
+              },
+            }
+          : { message: notice.message };
+
+        if (notice.kind === "success") {
+          showSuccessToast(notice.title, options);
+        } else {
+          showErrorToast(notice.title, options);
+        }
+
+        if (notice.opensSettings) navigate("/settings");
+      }
+    },
+    [game, navigate, openGame, showErrorToast, showSuccessToast, updateGame]
+  );
+
+  const handlePlayGame = useCallback(async () => {
+    if (!game) return;
+
+    if (game.shop !== "launchbox") {
+      if (
+        installedMembers.some((member) => member.shop === "steam") &&
+        installedMembers.some((member) => member.shop === "epic")
+      ) {
+        setShowStoreSelection(true);
+        return;
+      }
+      if (game.shop === "epic" && game.epicInstallation) {
+        playEpicMember(game);
+        return;
+      }
+      await openGame();
+      return;
+    }
+
+    const discs = game.discs ?? [];
+
+    if (
+      discs.length === 0 ||
+      (discs.length === 1 && game.selectedDiscPath !== null)
+    ) {
+      await launchClassicsWithErrorHandling();
+      return;
+    }
+
+    if (game.dontAskDiscSelection && game.selectedDiscPath) {
+      await launchClassicsWithErrorHandling(game.selectedDiscPath);
+      return;
+    }
+
+    setIsDiscSelectionModalOpen(true);
+  }, [
+    game,
+    installedMembers,
+    launchClassicsWithErrorHandling,
+    openGame,
+    playEpicMember,
+  ]);
+
+  const handleDiscSelectionConfirm = useCallback(
+    async (discPath: string, dontAskAgain: boolean) => {
+      if (!game) return;
+
+      setIsDiscSelectionModalOpen(false);
+
+      try {
+        await globalThis.window.electron.updateClassicsDisc(
+          game.shop,
+          game.objectId,
+          {
+            selectedDiscPath: discPath,
+            dontAskDiscSelection: dontAskAgain,
+          }
+        );
+        await updateGame();
+        globalThis.window.dispatchEvent(new Event("library-update"));
+      } catch {
+        // Updating the preference is non-fatal; the selected disc can still launch.
+      }
+
+      await launchClassicsWithErrorHandling(discPath);
+    },
+    [game, launchClassicsWithErrorHandling, updateGame]
+  );
+
+  const focusNavigationTarget = useCallback(
+    (target?: FocusOverrideTarget) => {
+      if (!target || target.type === "block") {
+        return false;
+      }
+
+      if (target.type === "item") {
+        return navigation.setFocus(target.itemId) !== null;
+      }
+
+      return (
+        navigation.setFocusRegion(
+          target.regionId,
+          target.entryDirection ?? "right",
+          {
+            preferRememberedFocus: target.preferRememberedFocus,
+          }
+        ) !== null
+      );
+    },
+    [navigation]
+  );
+
+  const getDescriptionScrollBounds = useCallback(() => {
+    const descriptionContainer = descriptionContainerRef.current;
+    const pageElement = pageRef.current;
+
+    if (!descriptionContainer || !pageElement) {
+      return null;
+    }
+
+    const pageRect = pageElement.getBoundingClientRect();
+    const descriptionRect = descriptionContainer.getBoundingClientRect();
+    const descriptionTop =
+      pageElement.scrollTop + (descriptionRect.top - pageRect.top);
+    const descriptionBottom = descriptionTop + descriptionRect.height;
+
+    return {
+      pageElement,
+      descriptionTop,
+      descriptionBottom,
+      pageClientHeight: pageElement.clientHeight,
+      maxScrollTop: Math.max(
+        0,
+        pageElement.scrollHeight - pageElement.clientHeight
+      ),
+      viewportTop: pageElement.scrollTop,
+      viewportBottom: pageElement.scrollTop + pageElement.clientHeight,
+    };
+  }, []);
+
+  const isDescriptionVisibleEnoughForReturn = useCallback(() => {
+    const bounds = getDescriptionScrollBounds();
+
+    if (!bounds) {
+      return false;
+    }
+
+    const descriptionHeight = bounds.descriptionBottom - bounds.descriptionTop;
+
+    if (descriptionHeight <= 0) {
+      return false;
+    }
+
+    const visibleHeight = Math.max(
+      0,
+      Math.min(bounds.descriptionBottom, bounds.viewportBottom) -
+        Math.max(bounds.descriptionTop, bounds.viewportTop)
+    );
+
+    return (
+      visibleHeight / descriptionHeight >= DESCRIPTION_RETURN_MIN_VISIBLE_RATIO
+    );
+  }, [getDescriptionScrollBounds]);
+
+  const sidebarMainContentReturnTarget = (() => {
+    const lastMainContentFocusId = lastMainContentFocusIdRef.current;
+
+    if (
+      lastMainContentFocusId &&
+      isMainContentFocusId(lastMainContentFocusId) &&
+      lastMainContentFocusId !== GAME_DESCRIPTION_BODY_ID
+    ) {
+      return getItemFocusTarget(lastMainContentFocusId);
+    }
+
+    if (
+      lastMainContentFocusId === GAME_DESCRIPTION_BODY_ID &&
+      isMainContentFocusId(lastMainContentFocusId) &&
+      isDescriptionVisibleEnoughForReturn()
+    ) {
+      return getItemFocusTarget(lastMainContentFocusId);
+    }
+
+    if (activeMediaItemId) {
+      return getItemFocusTarget(activeMediaItemId);
+    }
+
+    if (hasMedia) {
+      return {
+        type: "region" as const,
+        regionId: GAME_MEDIA_CAROUSEL_REGION_ID,
+        entryDirection: "left" as const,
+        preferRememberedFocus: true,
+      };
+    }
+
+    return heroActionsLeftNavigationTarget;
+  })();
+
+  const sidebarCarouselLeftNavigationTarget = useMemo(
+    () => sidebarMainContentReturnTarget,
+    [sidebarMainContentReturnTarget]
+  );
+
+  const sidebarCarouselNavigationOverrides = useMemo(
+    () => ({
+      left: sidebarCarouselLeftNavigationTarget,
+      right: { type: "block" as const },
+    }),
+    [sidebarCarouselLeftNavigationTarget]
+  );
+
+  const sidebarStatsNavigationOverrides = useMemo(
+    () => ({
+      ...sidebarCarouselNavigationOverrides,
+      up: { type: "block" as const },
+    }),
+    [sidebarCarouselNavigationOverrides]
+  );
+
+  const sidebarLanguagesNavigationOverrides = useMemo(
+    () => ({
+      ...sidebarCarouselNavigationOverrides,
+      down: { type: "block" as const },
+    }),
+    [sidebarCarouselNavigationOverrides]
+  );
+
+  const scrollPageBy = useCallback((delta: number) => {
+    const pageElement = pageRef.current;
+
+    if (!pageElement) {
+      return false;
+    }
+
+    const nextScrollTop = Math.max(
+      0,
+      Math.min(
+        pageElement.scrollTop + delta,
+        pageElement.scrollHeight - pageElement.clientHeight
+      )
+    );
+
+    if (nextScrollTop === pageElement.scrollTop) {
+      return false;
+    }
+
+    if (globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      pageElement.scrollTop = nextScrollTop;
+      return true;
+    }
+
+    if (descriptionScrollAnimationFrameRef.current !== null) {
+      globalThis.cancelAnimationFrame(
+        descriptionScrollAnimationFrameRef.current
+      );
+      descriptionScrollAnimationFrameRef.current = null;
+    }
+
+    const startScrollTop = pageElement.scrollTop;
+    const distance = nextScrollTop - startScrollTop;
+    const startTime = globalThis.performance.now();
+
+    const animate = (now: number) => {
+      const progress = clamp(
+        (now - startTime) / DESCRIPTION_SCROLL_ANIMATION_DURATION,
+        0,
+        1
+      );
+      const easedProgress = easeOutCubic(progress);
+
+      pageElement.scrollTop = startScrollTop + distance * easedProgress;
+
+      if (progress < 1) {
+        descriptionScrollAnimationFrameRef.current =
+          globalThis.requestAnimationFrame(animate);
+        return;
+      }
+
+      pageElement.scrollTop = nextScrollTop;
+      descriptionScrollAnimationFrameRef.current = null;
+    };
+
+    descriptionScrollAnimationFrameRef.current =
+      globalThis.requestAnimationFrame(animate);
+    return true;
+  }, []);
+
+  useNavigationScreenActions(
+    currentFocusId === GAME_DESCRIPTION_BODY_ID
+      ? {
+          direction: {
+            up: () => {
+              const bounds = getDescriptionScrollBounds();
+
+              if (
+                bounds &&
+                bounds.viewportTop >
+                  bounds.descriptionTop + DESCRIPTION_SCROLL_EDGE_TOLERANCE
+              ) {
+                scrollPageBy(-DESCRIPTION_SCROLL_STEP);
+                return;
+              }
+
+              focusNavigationTarget(bodyUpNavigationTarget);
+            },
+            down: () => {
+              const bounds = getDescriptionScrollBounds();
+
+              if (
+                bounds &&
+                bounds.viewportBottom <
+                  bounds.descriptionBottom - DESCRIPTION_SCROLL_EDGE_TOLERANCE
+              ) {
+                scrollPageBy(DESCRIPTION_SCROLL_STEP);
+                return;
+              }
+
+              focusNavigationTarget(
+                similarGamesEntryTarget ?? commentsEntryTarget
+              );
+            },
+            left: () => {
+              navigation.setFocus(BIG_PICTURE_SIDEBAR_ITEM_IDS.home);
+            },
+            right: () => {
+              focusNavigationTarget(bodyRightNavigationTarget);
+            },
+          },
+        }
+      : {}
+  );
+
+  useEffect(() => {
+    if (currentFocusId !== GAME_DESCRIPTION_BOTTOM_ENTRY_ID) {
+      return;
+    }
+
+    const bounds = getDescriptionScrollBounds();
+
+    if (!bounds) {
+      return;
+    }
+
+    const nextScrollTop = Math.min(
+      Math.max(
+        0,
+        bounds.descriptionBottom -
+          bounds.pageClientHeight +
+          DESCRIPTION_FOCUS_ENTRY_MARGIN
+      ),
+      bounds.maxScrollTop
+    );
+
+    preserveDescriptionScrollOnNextBodyFocusRef.current = true;
+    bounds.pageElement.scrollTop = nextScrollTop;
+
+    const frameId = globalThis.requestAnimationFrame(() => {
+      navigation.setFocus(GAME_DESCRIPTION_BODY_ID);
+    });
+
+    return () => {
+      globalThis.cancelAnimationFrame(frameId);
+    };
+  }, [currentFocusId, getDescriptionScrollBounds, navigation]);
+
+  useEffect(() => {
+    if (currentFocusId !== GAME_DESCRIPTION_BODY_ID) {
+      if (currentFocusId) {
+        previousFocusIdRef.current = currentFocusId;
+      }
+      return;
+    }
+
+    const bounds = getDescriptionScrollBounds();
+
+    if (!bounds) {
+      previousFocusIdRef.current = currentFocusId;
+      return;
+    }
+
+    if (preserveDescriptionScrollOnNextBodyFocusRef.current) {
+      preserveDescriptionScrollOnNextBodyFocusRef.current = false;
+      previousFocusIdRef.current = currentFocusId;
+      return;
+    }
+
+    const previousFocusId = previousFocusIdRef.current;
+    const previousRegionId = previousFocusId
+      ? (navigationNodesById.get(previousFocusId)?.regionId ?? null)
+      : null;
+    const enteredFromComments = isRegionWithinTree(
+      previousRegionId,
+      GAME_COMMENTS_ACTION_ROWS_REGION_ID
+    );
+    const enteredFromSimilarGames = isRegionWithinTree(
+      previousRegionId,
+      GAME_SIMILAR_GAMES_REGION_ID
+    );
+    const enteredFromSidebar = isRegionWithinTree(
+      previousRegionId,
+      GAME_SIDEBAR_REGION_ID
+    );
+    const enteredFromGlobalSidebar = isRegionWithinTree(
+      previousRegionId,
+      BIG_PICTURE_SIDEBAR_REGION_ID
+    );
+    if (enteredFromSidebar || enteredFromGlobalSidebar) {
+      previousFocusIdRef.current = currentFocusId;
+      return;
+    }
+
+    const targetScrollTop =
+      enteredFromComments || enteredFromSimilarGames
+        ? bounds.descriptionBottom -
+          bounds.pageClientHeight +
+          DESCRIPTION_FOCUS_ENTRY_MARGIN
+        : bounds.descriptionTop - DESCRIPTION_FOCUS_ENTRY_MARGIN;
+    const nextScrollTop = Math.min(
+      Math.max(0, targetScrollTop),
+      bounds.maxScrollTop
+    );
+
+    const frameId = globalThis.requestAnimationFrame(() => {
+      scrollPageBy(nextScrollTop - bounds.pageElement.scrollTop);
+    });
+
+    previousFocusIdRef.current = currentFocusId;
+
+    return () => {
+      globalThis.cancelAnimationFrame(frameId);
+    };
+  }, [
+    currentFocusId,
+    getDescriptionScrollBounds,
+    isRegionWithinTree,
+    navigationNodesById,
+    scrollPageBy,
+  ]);
+
+  useEffect(() => {
+    if (currentFocusId === GAME_DESCRIPTION_BODY_ID) {
+      return;
+    }
+
+    if (descriptionScrollAnimationFrameRef.current !== null) {
+      globalThis.cancelAnimationFrame(
+        descriptionScrollAnimationFrameRef.current
+      );
+      descriptionScrollAnimationFrameRef.current = null;
+    }
+
+    if (currentFocusId) {
+      previousFocusIdRef.current = currentFocusId;
+    }
+  }, [currentFocusId]);
+
+  useEffect(() => {
+    if (!isMainContentFocusId(currentFocusId)) {
+      return;
+    }
+
+    lastMainContentFocusIdRef.current = currentFocusId;
+  }, [currentFocusId, isMainContentFocusId]);
+
+  useEffect(
+    () => () => {
+      if (descriptionScrollAnimationFrameRef.current !== null) {
+        globalThis.cancelAnimationFrame(
+          descriptionScrollAnimationFrameRef.current
+        );
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    const descriptionContainer = descriptionContainerRef.current;
+    const pageElement = pageRef.current;
+
+    if (!descriptionContainer || !pageElement) {
+      return;
+    }
+
+    const videos = Array.from(descriptionContainer.querySelectorAll("video"));
+
+    if (videos.length === 0) {
+      return;
+    }
+
+    videos.forEach((video) => {
+      video.muted = true;
+      video.playsInline = true;
+      video.setAttribute("muted", "");
+      video.setAttribute("playsinline", "");
+    });
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!(entry.target instanceof HTMLVideoElement)) {
+            return;
+          }
+
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+            entry.target.play().catch(() => {});
+          } else {
+            entry.target.pause();
+          }
+        });
+      },
+      {
+        root: pageElement,
+        threshold: [0, 0.5, 0.75],
+      }
+    );
+
+    videos.forEach((video) => observer.observe(video));
+
+    return () => {
+      observer.disconnect();
+      videos.forEach((video) => video.pause());
+    };
+  }, [descriptionBlocks]);
+
+  if (isLoading || !shopDetails) {
+    return (
+      <VerticalFocusGroup regionId={GAME_PAGE_REGION_ID} asChild>
+        <div className="game-page">
+          <p style={{ color: "white" }}>Loading...</p>
+        </div>
+      </VerticalFocusGroup>
+    );
+  }
+
+  return (
+    <VerticalFocusGroup regionId={GAME_PAGE_REGION_ID} asChild>
+      <div ref={pageRef} className="game-page">
+        <EpicCloudSaveConflictModal
+          game={epicSaveConflict}
+          isGameRunning={isGameRunning}
+          onClose={() => setEpicSaveConflict(null)}
+        />
+        <Modal
+          visible={showStoreSelection}
+          title={t("choose_game_store", { ns: "game_details" })}
+          onClose={() => setShowStoreSelection(false)}
+        >
+          <HorizontalFocusGroup>
+            {installedMembers.map((member) => (
+              <Button
+                key={member.id}
+                variant="primary"
+                onClick={() =>
+                  member.shop === "epic"
+                    ? playEpicMember(member)
+                    : void launchMember(member)
+                }
+              >
+                {t(member.shop === "steam" ? "play_on_steam" : "play_on_epic", {
+                  ns: "game_details",
+                })}
+              </Button>
+            ))}
+          </HorizontalFocusGroup>
+        </Modal>
+        <Modal
+          visible={showEpicUpdate}
+          title={t(
+            epicUpdateInterrupted ? "epic_update_resume" : "epic_update",
+            { ns: "game_details" }
+          )}
+          description={
+            epicUpdate.update?.publishedVersion
+              ? t("epic_update_available", {
+                  ns: "game_details",
+                  version: epicUpdate.update.publishedVersion,
+                })
+              : undefined
+          }
+          onClose={() => setShowEpicUpdate(false)}
+        >
+          <HorizontalFocusGroup>
+            {epicUpdateInterrupted ? (
+              <Button
+                variant="primary"
+                disabled={epicUpdate.starting}
+                onClick={() => void resumeEpicUpdate()}
+              >
+                {t("epic_update_resume", { ns: "game_details" })}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="primary"
+                  disabled={epicUpdate.starting}
+                  onClick={() => void startEpicUpdate()}
+                >
+                  {t("epic_update", { ns: "game_details" })}
+                </Button>
+                <Button
+                  variant="secondary"
+                  disabled={epicUpdate.starting}
+                  onClick={() => {
+                    setShowEpicUpdate(false);
+                    const member = installedEpicMember ?? game;
+                    if (member) void launchMember(member, false, false, true);
+                  }}
+                >
+                  {t("epic_play_without_update", { ns: "game_details" })}
+                </Button>
+              </>
+            )}
+          </HorizontalFocusGroup>
+        </Modal>
+        <Modal
+          visible={!!localSaveRetry}
+          title={t(
+            canRetryLocalSaves
+              ? "epic_play_local_saves"
+              : "epic_play_offline_title",
+            { ns: "game_details" }
+          )}
+          description={t(
+            canRetryLocalSaves
+              ? "epic_play_local_saves_description"
+              : "epic_play_offline_description",
+            { ns: "game_details" }
+          )}
+          onClose={() => setLocalSaveRetry(null)}
+        >
+          <HorizontalFocusGroup>
+            {canRetryLocalSaves && (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  if (localSaveRetry)
+                    void launchMember(
+                      localSaveRetry.member,
+                      true,
+                      false,
+                      localSaveRetry.skipUpdateCheck
+                    );
+                }}
+              >
+                {t("epic_play_local_saves", { ns: "game_details" })}
+              </Button>
+            )}
+            {canRetryOffline && (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  if (localSaveRetry)
+                    void launchMember(localSaveRetry.member, false, true);
+                }}
+              >
+                {t("epic_play_offline", { ns: "game_details" })}
+              </Button>
+            )}
+          </HorizontalFocusGroup>
+        </Modal>
+        <BigPictureCloudSaveProvider
+          objectId={game?.objectId ?? objectId!}
+          shop={game?.shop ?? shop!}
+          platform={game?.platform}
+          hasExecutablePath={
+            game ? hasCloudSaveExecutableSelection(game) : false
+          }
+          isGameRunning={isGameRunning}
+          onSelectExecutable={() => setIsGameSettingsModalOpen(true)}
+        >
+          <Hero
+            shopDetails={shopDetails}
+            game={presentationGame ?? game}
+            downloadGame={downloadGame}
+            isGameRunning={isGameRunning}
+            isFavorite={presentationGame?.favorite ?? game?.favorite ?? false}
+            toggleFavorite={toggleFavorite}
+            onPlay={handlePlayGame}
+            onDownload={handleOpenDownloadModal}
+            installStep={installStep}
+            onInstall={() => void handleInstall()}
+            onExtract={() => void handleExtract()}
+            onSelectExecutable={handleSelectExecutable}
+            onAddToLibrary={handleAddToLibrary}
+            onOpenDownloadOptions={handleOpenDownloadModal}
+            onOpenSettings={() => setIsGameSettingsModalOpen(true)}
+            onClose={closeGame}
+            isAddingToLibrary={isAddingToLibrary}
+            canAddToLibrary={canAddToLibrary}
+            downNavigationTarget={contentBelowHeroTarget}
+            sidebarEntryTarget={sidebarEntryTarget}
+          />
+          {game && launchSettings && customizationSettings && cloudSettings && (
+            <GameSettingsModal
+              visible={isGameSettingsModalOpen}
+              game={game}
+              removeFilesGame={presentationGame ?? game}
+              launchSettings={launchSettings}
+              customizationSettings={customizationSettings}
+              cloudSettings={cloudSettings}
+              onClose={() => setIsGameSettingsModalOpen(false)}
+            />
+          )}
+        </BigPictureCloudSaveProvider>
+
+        <section className="game-page__content">
+          <PlaytimeBar
+            game={game}
+            presentationGame={presentationGame}
+            isGameRunning={isGameRunning}
+            runningSessionDurationInMillis={runningSessionDurationInMillis}
+          />
+          <EpicCloudSaves game={epicMember} isGameRunning={isGameRunning} />
+
+          <div className="game-page__main-layout">
+            <div className="game-page__main-column">
+              <ScreenshotCarousel
+                videos={shopDetails.movies ?? []}
+                screenshots={shopDetails.screenshots ?? []}
+                onActiveItemChange={setActiveMediaItemId}
+                nextContentEntryTarget={
+                  descriptionEntryTarget ??
+                  similarGamesEntryTarget ??
+                  commentsEntryTarget
+                }
+                sidebarEntryTarget={sidebarStatsEntryTarget}
+              />
+
+              {hasDescription && (
+                <VerticalFocusGroup
+                  regionId={GAME_DESCRIPTION_REGION_ID}
+                  className="game-page__detailed-description-region"
+                >
+                  <FocusItem
+                    id={GAME_DESCRIPTION_BODY_ID}
+                    navigationOverrides={{
+                      left: getItemFocusTarget(
+                        BIG_PICTURE_SIDEBAR_ITEM_IDS.home
+                      ),
+                      right: bodyRightNavigationTarget,
+                      up: { type: "block" },
+                      down: { type: "block" },
+                    }}
+                    asChild
+                  >
+                    <div
+                      ref={descriptionContainerRef}
+                      className="game-page__detailed-description"
+                      data-suppress-navigation-autoscroll="true"
+                    >
+                      {descriptionBlocks.map((block, index) => (
+                        <div
+                          key={`description-block-${index}`} // NOSONAR
+                          className="game-page__detailed-description-block"
+                        >
+                          <div
+                            className="game-page__detailed-description-block-content"
+                            dangerouslySetInnerHTML={{
+                              __html: block,
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </FocusItem>
+
+                  <FocusItem
+                    id={GAME_DESCRIPTION_BOTTOM_ENTRY_ID}
+                    navigationOverrides={{
+                      left: getItemFocusTarget(
+                        BIG_PICTURE_SIDEBAR_ITEM_IDS.home
+                      ),
+                      right: bodyRightNavigationTarget,
+                      up: { type: "block" },
+                      down: { type: "block" },
+                    }}
+                    asChild
+                  >
+                    <div
+                      className="game-page__detailed-description-bottom-entry"
+                      data-suppress-navigation-autoscroll="true"
+                      aria-hidden="true"
+                    />
+                  </FocusItem>
+                </VerticalFocusGroup>
+              )}
+
+              {shouldRenderSimilarGames ? (
+                <>
+                  <Divider />
+                  <div className="game-page__similar-games">
+                    {similarGamesSectionState === "loading" ? (
+                      <SimilarGamesSkeleton title={t("similar_games")} />
+                    ) : null}
+                    {similarGamesSectionState === "empty" ? (
+                      <SimilarGamesEmptyState
+                        title={t("similar_games")}
+                        message={t("no_similar_games")}
+                      />
+                    ) : null}
+                    {similarGamesSectionState === "ready" ? (
+                      <FocusCarousel
+                        title={t("similar_games")}
+                        cardVariant="vertical"
+                        games={similarCarouselGames}
+                        regionId={GAME_SIMILAR_GAMES_REGION_ID}
+                        getItemId={getSimilarGameItemId}
+                        getItemNavigationOverrides={
+                          getSimilarGameNavigationOverrides
+                        }
+                        onItemActivate={(similarGame) =>
+                          navigate(getBigPictureGameDetailsPath(similarGame))
+                        }
+                        showRightFade
+                      />
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
+
+              {!isCustomGame && (
+                <>
+                  <Divider />
+
+                  <GameReviews
+                    shop={game?.shop ?? shop!}
+                    objectId={game?.objectId ?? objectId!}
+                    topNavigationTarget={commentsTopNavigationTarget}
+                    onHasNavigableActionsChange={setHasNavigableComments}
+                  />
+                </>
+              )}
+            </div>
+
+            <VerticalFocusGroup regionId={GAME_SIDEBAR_REGION_ID} asChild>
+              <div className="game-page__sidebar">
+                {!isCustomGame && (
+                  <FocusItem
+                    id={GAME_SIDEBAR_STATS_ID}
+                    navigationOrder={0}
+                    navigationOverrides={sidebarStatsNavigationOverrides}
+                    asChild
+                  >
+                    <section
+                      className="game-page__sidebar-section game-page__stats"
+                      aria-label="Game stats"
+                    >
+                      <div className="game-page__stats-title">
+                        <Typography>Game Stats</Typography>
+                      </div>
+
+                      <div className="game-page__stats-row">
+                        <Typography className="game-page__stats-label">
+                          Rating
+                        </Typography>
+                        <div className="game-page__stats-rating-value">
+                          <StarIcon
+                            size={16}
+                            weight="fill"
+                            aria-hidden="true"
+                            className="game-page__stats-rating-icon"
+                          />
+                          <Typography className="game-page__stats-value">
+                            {formatNumber(stats?.averageScore ?? 0)}
+                          </Typography>
+                        </div>
+                      </div>
+
+                      <div className="game-page__stats-row">
+                        <Typography className="game-page__stats-label">
+                          Downloads
+                        </Typography>
+                        <Typography className="game-page__stats-value">
+                          {formatNumber(stats?.downloadCount ?? 0)}
+                        </Typography>
+                      </div>
+
+                      <div className="game-page__stats-row">
+                        <Typography className="game-page__stats-label">
+                          Playing now
+                        </Typography>
+                        <Typography className="game-page__stats-value">
+                          {formatNumber(stats?.playerCount ?? 0)}
+                        </Typography>
+                      </div>
+                    </section>
+                  </FocusItem>
+                )}
+
+                <GameMyScreenshots
+                  shop={game?.shop ?? shop!}
+                  objectId={game?.objectId ?? objectId!}
+                  communityShop={shop!}
+                  communityObjectId={objectId!}
+                  navigationOrder={0.5}
+                  leftTarget={
+                    descriptionEntryTarget ??
+                    sidebarCarouselLeftNavigationTarget
+                  }
+                />
+
+                {(howLongToBeat?.length ?? 0) > 0 && (
+                  <HowLongToBeatBox
+                    howLongToBeat={howLongToBeat ?? []}
+                    focusId={GAME_SIDEBAR_HLTB_ID}
+                    focusNavigationOrder={1}
+                    focusNavigationOverrides={
+                      sidebarCarouselNavigationOverrides
+                    }
+                  />
+                )}
+
+                {shouldShowProtonSection && (
+                  <ProtonDBSection
+                    protonDBData={protonDBData}
+                    focusId={GAME_SIDEBAR_PROTONDB_ID}
+                    focusNavigationOrder={2}
+                    focusNavigationOverrides={
+                      sidebarCarouselNavigationOverrides
+                    }
+                  />
+                )}
+
+                <ControllerSupportBox
+                  shop={catalogueGame.shop}
+                  shopDetails={shopDetails}
+                  focusId={GAME_SIDEBAR_CONTROLLER_SUPPORT_ID}
+                  focusNavigationOrder={3}
+                  focusNavigationOverrides={sidebarCarouselNavigationOverrides}
+                />
+
+                {achievements.length > 0 && (
+                  <AchievementsBox
+                    achievements={achievements ?? []}
+                    focusId={GAME_SIDEBAR_ACHIEVEMENTS_ID}
+                    focusNavigationOrder={4}
+                    focusNavigationOverrides={
+                      sidebarCarouselNavigationOverrides
+                    }
+                  />
+                )}
+
+                <FocusItem
+                  id={GAME_SIDEBAR_METADATA_ID}
+                  navigationOrder={5}
+                  navigationOverrides={sidebarCarouselNavigationOverrides}
+                  asChild
+                >
+                  <section
+                    className="game-page__sidebar-section game-page__metadata"
+                    aria-label="Game info"
+                  >
+                    {isLaunchboxGame && shopDetails.platform ? (
+                      <div className="game-page__metadata-row">
+                        <Typography className="game-page__metadata-label">
+                          Platform
+                        </Typography>
+                        <Typography className="game-page__metadata-value">
+                          {shopDetails.platform}
+                        </Typography>
+                      </div>
+                    ) : null}
+
+                    {isLaunchboxGame && shopGenres.length > 0 ? (
+                      <div className="game-page__metadata-row">
+                        <Typography className="game-page__metadata-label">
+                          Genres
+                        </Typography>
+                        <Typography className="game-page__metadata-value">
+                          {shopGenres.join(", ")}
+                        </Typography>
+                      </div>
+                    ) : null}
+
+                    {isLaunchboxGame && launchboxRegions.length > 0 ? (
+                      <div className="game-page__metadata-row">
+                        <Typography className="game-page__metadata-label">
+                          Regions
+                        </Typography>
+                        <div className="game-page__metadata-flags">
+                          {launchboxRegions.map((region) => (
+                            <img
+                              key={region}
+                              src={getSkuRegionFlag(region)}
+                              alt={REGION_LABELS[region]}
+                              title={REGION_LABELS[region]}
+                              className="game-page__metadata-flag"
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {developer && (
+                      <div className="game-page__metadata-row">
+                        <Typography className="game-page__metadata-label">
+                          Developed by
+                        </Typography>
+                        <Typography className="game-page__metadata-value">
+                          {developer}
+                        </Typography>
+                      </div>
+                    )}
+
+                    {publisher && (
+                      <div className="game-page__metadata-row">
+                        <Typography className="game-page__metadata-label">
+                          Published by
+                        </Typography>
+                        <Typography className="game-page__metadata-value">
+                          {publisher}
+                        </Typography>
+                      </div>
+                    )}
+
+                    {releaseDate && (
+                      <div className="game-page__metadata-row">
+                        <Typography className="game-page__metadata-label">
+                          Release Date
+                        </Typography>
+                        <Typography className="game-page__metadata-value">
+                          {releaseDate}
+                        </Typography>
+                      </div>
+                    )}
+                  </section>
+                </FocusItem>
+
+                {!isLaunchboxGame && !isCustomGame ? ( // NOSONAR
+                  <RequirementsToPlay
+                    shopDetails={shopDetails}
+                    focusId={GAME_SIDEBAR_REQUIREMENTS_ID}
+                    focusNavigationOrder={6}
+                    focusNavigationOverrides={
+                      sidebarCarouselNavigationOverrides
+                    }
+                  />
+                ) : null}
+
+                <SupportedLanguages
+                  shopDetails={shopDetails}
+                  focusId={GAME_SIDEBAR_LANGUAGES_ID}
+                  focusNavigationOrder={7}
+                  focusNavigationOverrides={sidebarLanguagesNavigationOverrides}
+                />
+              </div>
+            </VerticalFocusGroup>
+          </div>
+        </section>
+
+        <DownloadGameModal
+          visible={isDownloadModalOpen}
+          onClose={handleCloseDownloadModal}
+          game={{
+            objectId: downloadGame?.objectId ?? game?.objectId ?? objectId!,
+            shop: downloadGame?.shop ?? game?.shop ?? shop!,
+            title: resolvedGameTitle,
+            iconUrl: preferredAssets.iconUrl,
+            downloadSources:
+              preferredAssets.downloadSources || game?.downloadSources,
+            libraryHeroImageUrl: preferredAssets.heroSrc || null,
+            libraryImageUrl: preferredAssets.libraryImageUrl,
+            coverImageUrl:
+              preferredAssets.coverSrc || preferredAssets.iconSrc || null,
+          }}
+        />
+
+        <ExecutablePickerModal
+          target={executablePickerTarget}
+          onClose={handleCloseExecutablePicker}
+          onSaved={handleExecutableSaved}
+        />
+
+        {game?.shop === "launchbox" ? (
+          <DiscSelectionModal
+            visible={isDiscSelectionModalOpen}
+            coverImage={
+              preferredAssets.heroSrc ||
+              preferredAssets.landscapeSrc ||
+              preferredAssets.iconSrc ||
+              undefined
+            }
+            discs={game.discs ?? []}
+            defaultDiscPath={game.selectedDiscPath ?? null}
+            defaultDontAsk={Boolean(game.dontAskDiscSelection)}
+            onClose={() => setIsDiscSelectionModalOpen(false)}
+            onConfirm={handleDiscSelectionConfirm}
+          />
+        ) : null}
+
+        <ConfirmationModal
+          visible={pendingClassicsLaunch !== null}
+          title="RPCS3 is already running"
+          description="Close the current RPCS3 session before launching this game, or force Hydra to start it again."
+          confirmLabel="Launch Anyway"
+          onClose={() => setPendingClassicsLaunch(null)}
+          onConfirm={async () => {
+            const pending = pendingClassicsLaunch;
+            setPendingClassicsLaunch(null);
+
+            if (pending) {
+              await launchClassicsWithErrorHandling(pending.discPath, true);
+            }
+          }}
+        />
+      </div>
+    </VerticalFocusGroup>
+  );
+}

@@ -1,0 +1,893 @@
+@use "../../scss/globals.scss";
+
+@keyframes friends-window-add-actions-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.friends-window {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+
+  .toast {
+    left: calc(globals.$spacing-unit * 2);
+    right: calc(globals.$spacing-unit * 2);
+    bottom: calc(globals.$spacing-unit * 2);
+    max-width: none;
+  }
+
+  &__add-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: globals.$spacing-unit;
+    margin-top: calc(globals.$spacing-unit * -1);
+    padding: 0 calc(globals.$spacing-unit * 2);
+    animation: friends-window-add-actions-enter 0.15s ease-out;
+
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
+
+    > * {
+      flex: 1 1 110px;
+      min-width: 0;
+    }
+  }
+
+  &__search--add {
+    border-color: rgba(255, 255, 255, 0.3);
+
+    .friends-window__search-input:not(:placeholder-shown) {
+      font-family: monospace;
+      letter-spacing: 0.05em;
+    }
+  }
+  background-color: globals.$background-color;
+  color: globals.$body-color;
+  // Set explicitly so the window doesn't silently rely on the body rule in
+  // app.scss (the @font-face itself is loaded globally from main.tsx).
+  font-family:
+    Noto Sans,
+    sans-serif;
+  font-size: globals.$body-font-size;
+  overflow: hidden;
+
+  &__header {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+
+    // When a profile background is present, cover the whole header (including
+    // the window-control strip) edge-to-edge and drop the title bar chrome so
+    // the image reads as one full-bleed banner.
+    &--has-bg {
+      &::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        background: linear-gradient(135deg, rgb(0 0 0 / 25%), rgb(0 0 0 / 18%));
+        pointer-events: none;
+      }
+
+      .friends-window__title-bar {
+        background-color: transparent;
+        border-bottom: none;
+      }
+
+      // Lighter scrim makes the image pop but hurts text contrast — restore
+      // readability with full opacity + a soft shadow (matches profile hero).
+      .friends-window__profile-status,
+      .friends-window__profile-name,
+      .friends-window__profile-game {
+        opacity: 1;
+        text-shadow: 0 0 5px rgb(0 0 0 / 60%);
+      }
+    }
+  }
+
+  &__header-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 0;
+  }
+
+  &__title-bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 35px;
+    min-height: 35px;
+    // Leave room on the right for the window controls so the title stays
+    // clear of them.
+    padding: 0 0 0 calc(globals.$spacing-unit * 2);
+    background-color: globals.$dark-background-color;
+    border-bottom: 1px solid globals.$border-color;
+    -webkit-app-region: drag;
+    z-index: globals.$title-bar-z-index;
+
+    h4 {
+      margin: 0;
+      font-size: globals.$small-font-size;
+      font-weight: 500;
+      color: globals.$muted-color;
+    }
+  }
+
+  &__window-controls {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    margin-left: auto;
+    // Buttons must stay clickable on the otherwise-draggable title bar.
+    -webkit-app-region: no-drag;
+  }
+
+  &__window-control {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 35px;
+    height: 35px;
+    padding: 0;
+    background: none;
+    border: none;
+    color: globals.$muted-color;
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color 0.2s ease,
+      color 0.2s ease;
+
+    &:hover {
+      background-color: rgba(255, 255, 255, 0.08);
+    }
+
+    &--close:hover {
+      background-color: globals.$error-color;
+      color: #ffffff;
+    }
+  }
+
+  &__content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    // Vertical padding only. The horizontal padding lives on the scrolling
+    // list (and the search row) so the scrollbar renders outside the right
+    // padding — same as the main sidebar, which keeps rows off the scrollbar.
+    // Bottom spacing stays here on the non-scrolling wrapper so it survives
+    // Blink dropping padding-bottom from a scroll container's overflow region.
+    padding: calc(globals.$spacing-unit * 2) 0;
+    gap: calc(globals.$spacing-unit * 2);
+  }
+
+  &__profile {
+    position: relative;
+    z-index: 2;
+    display: flex;
+  }
+
+  &__profile-content {
+    display: flex;
+    align-items: center;
+    gap: calc(globals.$spacing-unit * 1.5);
+    width: 100%;
+    padding: calc(globals.$spacing-unit * 2);
+  }
+
+  &__profile-avatar {
+    display: inline-flex;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+
+    &:hover {
+      opacity: globals.$active-opacity;
+    }
+
+    &:disabled {
+      cursor: default;
+      opacity: 1;
+    }
+  }
+
+  &__profile-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: calc(globals.$spacing-unit / 2);
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__profile-name-row {
+    display: flex;
+    align-items: center;
+    gap: globals.$spacing-unit;
+    width: 100%;
+    min-width: 0;
+  }
+
+  &__profile-game {
+    display: flex;
+    align-items: center;
+    gap: calc(globals.$spacing-unit / 2);
+    min-width: 0;
+    color: globals.$body-color;
+
+    small {
+      font-size: globals.$small-font-size;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  &__profile-status {
+    font-size: globals.$small-font-size;
+    color: globals.$body-color;
+    opacity: 0.7;
+  }
+
+  &__profile-name {
+    flex-shrink: 0;
+    max-width: 100%;
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: globals.$body-font-size;
+    font-weight: 700;
+    color: globals.$muted-color;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 0.2s ease;
+
+    &:hover {
+      text-decoration: underline;
+    }
+
+    &:disabled {
+      cursor: default;
+      text-decoration: none;
+    }
+  }
+
+  &__friend-code {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    min-width: 0;
+    background: none;
+    border: none;
+    padding: 0;
+    color: globals.$body-color;
+    font-size: globals.$small-font-size;
+    cursor: pointer;
+    transition: color 0.2s ease;
+
+    svg {
+      flex-shrink: 0;
+    }
+
+    &:hover,
+    &--copied {
+      color: globals.$muted-color;
+
+      .friends-window__friend-code-value {
+        max-width: 160px;
+        margin-right: calc(globals.$spacing-unit / 2);
+        opacity: 1;
+        color: globals.$muted-color;
+      }
+    }
+  }
+
+  &__friend-code-value {
+    // Hidden until the copy button is hovered (or right after copying), then
+    // expands inline — mirrors the profile-page hero.
+    max-width: 0;
+    margin-right: 0;
+    opacity: 0;
+    overflow: hidden;
+    font-family: monospace;
+    color: globals.$muted-color;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    transition:
+      max-width 0.2s ease,
+      margin-right 0.2s ease,
+      opacity 0.2s ease,
+      color 0.2s ease;
+  }
+
+  &__search-row {
+    display: flex;
+    align-items: center;
+    gap: globals.$spacing-unit;
+    padding: 0 calc(globals.$spacing-unit * 2);
+  }
+
+  &__add-friend.button {
+    display: grid;
+    height: 40px;
+    flex-shrink: 0;
+    padding: 0;
+    border: none;
+    background-color: transparent;
+    white-space: nowrap;
+
+    &:hover,
+    &:disabled {
+      background-color: transparent;
+    }
+  }
+
+  &__add-friend-face {
+    grid-area: 1 / 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    transition:
+      opacity 0.2s ease,
+      background-color 0.2s ease;
+
+    &--add {
+      background-color: globals.$muted-color;
+      color: globals.$dark-background-color;
+    }
+
+    &--close {
+      opacity: 0;
+      border-color: globals.$border-color;
+      color: globals.$muted-color;
+    }
+  }
+
+  &__add-friend:hover &__add-friend-face--add {
+    background-color: #dadbe1;
+  }
+
+  &__add-friend:hover &__add-friend-face--close {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  &__add-friend--active &__add-friend-face--add {
+    opacity: 0;
+  }
+
+  &__add-friend--active &__add-friend-face--close {
+    opacity: 1;
+  }
+
+  // Matches the shared Button's 40px height so the row lines up.
+  &__search {
+    display: flex;
+    align-items: center;
+    gap: globals.$spacing-unit;
+    flex: 1;
+    min-width: 0;
+    padding: 0 calc(globals.$spacing-unit * 1.5);
+    height: 40px;
+    background-color: globals.$dark-background-color;
+    border: 1px solid globals.$border-color;
+    border-radius: 8px;
+    transition: border-color ease 0.2s;
+
+    &:hover {
+      border-color: rgba(255, 255, 255, 0.5);
+    }
+
+    &:focus-within {
+      border-color: #dadbe1;
+    }
+  }
+
+  &__search-icon {
+    color: globals.$body-color;
+    flex-shrink: 0;
+  }
+
+  &__search-input {
+    flex: 1;
+    min-width: 0;
+    background: none;
+    border: none;
+    outline: none;
+    color: globals.$muted-color;
+    font-size: globals.$body-font-size;
+
+    &::placeholder {
+      color: globals.$body-color;
+      opacity: 0.6;
+    }
+  }
+
+  &__search-clear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: globals.$body-color;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+
+  &__list-container {
+    display: flex;
+    flex-direction: column;
+    gap: calc(globals.$spacing-unit * 2);
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    // Symmetric horizontal padding on the scroll element itself, so the
+    // scrollbar sits outside it and rows clear it evenly on both sides.
+    padding: 0 calc(globals.$spacing-unit * 2);
+  }
+
+  &__section {
+    display: flex;
+    flex-direction: column;
+    gap: globals.$spacing-unit;
+  }
+
+  &__section-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: calc(globals.$spacing-unit / 2);
+    width: 100%;
+    // Opaque so list rows scroll cleanly underneath the pinned header.
+    background-color: globals.$background-color;
+    border: none;
+    padding: globals.$spacing-unit 0;
+    cursor: pointer;
+    color: globals.$body-color;
+    transition: color 0.2s ease;
+
+    &:hover {
+      color: globals.$muted-color;
+    }
+
+    svg {
+      flex-shrink: 0;
+    }
+
+    // Skeleton header: same look, nothing to toggle yet.
+    &--static {
+      cursor: default;
+
+      &:hover {
+        color: globals.$body-color;
+      }
+    }
+  }
+
+  &__section-title {
+    margin: 0;
+    font-size: globals.$small-font-size;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: inherit;
+  }
+
+  // Count orb next to a section title; grows into a pill past one digit.
+  &__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 calc(globals.$spacing-unit / 2);
+    margin-left: calc(globals.$spacing-unit / 2);
+    border-radius: 999px;
+    background-color: rgba(255, 255, 255, 0.12);
+    color: globals.$muted-color;
+    font-size: globals.$tiny-font-size;
+    font-weight: 600;
+    line-height: 1;
+
+    // Darker than $success-color so the white digits keep 4.5:1 contrast.
+    &--online {
+      background-color: #157a3b;
+      color: #ffffff;
+    }
+
+    &--offline {
+      background-color: #6d6d6d;
+      color: #ffffff;
+    }
+  }
+
+  &__badge-value {
+    text-box: trim-both cap alphabetic;
+  }
+
+  // Shimmer block. Each row sets --skeleton-delay so the sweep runs down the
+  // list instead of flashing every block at once.
+  &__skeleton {
+    display: block;
+    flex-shrink: 0;
+    border-radius: 4px;
+    background-color: #1c1c1c;
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      #333333 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    background-repeat: no-repeat;
+    animation: friends-window-skeleton 1.4s ease-in-out infinite;
+    animation-delay: var(--skeleton-delay, 0ms);
+
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+      background-image: none;
+    }
+
+    &--avatar {
+      width: 40px;
+      height: 40px;
+    }
+
+    &--name {
+      height: 12px;
+    }
+
+    &--status {
+      height: 9px;
+    }
+
+    &--count {
+      width: 18px;
+      height: 18px;
+      margin-left: calc(globals.$spacing-unit / 2);
+      border-radius: 50%;
+    }
+  }
+
+  // Same box as a friend row (40px avatar + 8px padding) so nothing shifts
+  // when the real rows replace it.
+  &__skeleton-row {
+    display: flex;
+    align-items: center;
+    gap: calc(globals.$spacing-unit * 1.5);
+    height: 56px;
+    padding: globals.$spacing-unit;
+  }
+
+  &__skeleton-details {
+    display: flex;
+    flex-direction: column;
+    gap: globals.$spacing-unit;
+    min-width: 0;
+  }
+
+  &__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: globals.$spacing-unit;
+  }
+
+  &__friend {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    border-radius: 8px;
+    transition: background-color 0.2s ease;
+    // Skip layout + paint for rows outside the viewport — near-free
+    // virtualization for the ~100-row list.
+    content-visibility: auto;
+    contain-intrinsic-size: auto 56px;
+    position: relative;
+
+    &:hover {
+      background-color: globals.$dark-background-color;
+    }
+
+    // Image rows: lazy <img> behind a gradient scrim. The source is a native-
+    // processed local variant so it stays light to raster.
+    &--has-bg {
+      // Scrim pseudo over the image; clips its own corners (no overflow:hidden,
+      // which caused scroll repaint flicker). Dark behind the avatar and name,
+      // fading out so the rest of the image shows as is.
+      &::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        border-radius: inherit;
+        background: linear-gradient(
+          90deg,
+          rgb(0 0 0 / 85%) 0%,
+          rgb(0 0 0 / 64%) 36%,
+          rgb(0 0 0 / 0%) 80%
+        );
+        pointer-events: none;
+      }
+
+      // Very slight hover: just fade the row (opacity is GPU-composited, no
+      // re-raster of the photo).
+      &:hover {
+        background-color: transparent;
+        opacity: 0.9;
+      }
+
+      .friends-window__friend-name,
+      .friends-window__friend-status,
+      .friends-window__game-info,
+      .friends-window__message-button {
+        color: #ffffff;
+        opacity: 1;
+      }
+
+      // Keeps the text crisp over busy images.
+      .friends-window__friend-details {
+        text-shadow: 0 1px 2px rgb(0 0 0 / 60%);
+      }
+
+      // The icon sits past the scrim's fade, on the bare image.
+      .friends-window__message-button svg {
+        filter: drop-shadow(0 1px 2px rgb(0 0 0 / 80%))
+          drop-shadow(0 0 6px rgb(0 0 0 / 60%));
+      }
+    }
+
+    &:hover .friends-window__message-button {
+      color: globals.$muted-color;
+      opacity: 1;
+    }
+  }
+
+  &__message-button {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    margin-right: globals.$spacing-unit;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    color: globals.$body-color;
+    opacity: 0.7;
+    cursor: pointer;
+    transition:
+      background-color 0.2s ease,
+      color 0.2s ease,
+      opacity 0.2s ease;
+
+    &:hover,
+    &:focus-visible {
+      background-color: rgba(255, 255, 255, 0.08);
+      color: globals.$muted-color;
+      opacity: 1;
+    }
+  }
+
+  &__message-button--unread {
+    color: globals.$muted-color;
+    opacity: 1;
+  }
+
+  &__unread-badge {
+    position: absolute;
+    top: -2px;
+    right: -4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background-color: globals.$error-color;
+    color: #ffffff;
+    font-size: globals.$tiny-font-size;
+    font-weight: 700;
+    line-height: 1;
+    pointer-events: none;
+  }
+
+  &__friend-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: inherit;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  &__friend-button {
+    display: flex;
+    align-items: center;
+    gap: calc(globals.$spacing-unit * 1.5);
+    flex: 1;
+    min-width: 0;
+    background: none;
+    border: none;
+    padding: globals.$spacing-unit;
+    cursor: pointer;
+    text-align: left;
+    position: relative;
+    z-index: 2;
+  }
+
+  &__avatar-wrapper {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  &__status-orb {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: #6d6d6d;
+    border: 2px solid globals.$background-color;
+
+    &--online {
+      background-color: globals.$success-color;
+    }
+
+    // Larger orb for the 56px profile-hero avatar.
+    &--profile {
+      width: 15px;
+      height: 15px;
+      bottom: 2px;
+      right: 2px;
+      border-width: 3px;
+    }
+  }
+
+  &__friend-details {
+    display: flex;
+    flex-direction: column;
+    gap: calc(globals.$spacing-unit / 4);
+    min-width: 0;
+  }
+
+  &__friend-name-row {
+    display: flex;
+    align-items: center;
+    gap: calc(globals.$spacing-unit / 2);
+    min-width: 0;
+  }
+
+  &__friend-name {
+    font-size: globals.$body-font-size;
+    color: globals.$muted-color;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__friend-status {
+    font-size: globals.$small-font-size;
+    color: globals.$subtle-color;
+  }
+
+  &__game-info {
+    display: flex;
+    align-items: center;
+    gap: calc(globals.$spacing-unit / 2);
+    color: globals.$body-color;
+
+    small {
+      font-size: globals.$small-font-size;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  &__game-icon {
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  &__request-actions {
+    display: flex;
+    position: relative;
+    z-index: 2;
+    gap: calc(globals.$spacing-unit / 2);
+    margin-right: globals.$spacing-unit;
+    flex-shrink: 0;
+  }
+
+  &__request-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid globals.$border-color;
+    background-color: rgba(255, 255, 255, 0.04);
+    color: globals.$body-color;
+    cursor: pointer;
+    transition:
+      background-color 0.2s ease,
+      color 0.2s ease,
+      border-color 0.2s ease;
+
+    &--accept:hover {
+      background-color: globals.$success-color;
+      border-color: globals.$success-color;
+      color: #ffffff;
+    }
+
+    &--refuse:hover {
+      background-color: globals.$error-color;
+      border-color: globals.$error-color;
+      color: #ffffff;
+    }
+  }
+
+  &__empty {
+    margin: 0;
+    padding: globals.$spacing-unit;
+    font-size: globals.$small-font-size;
+    color: globals.$subtle-color;
+  }
+}
+
+@keyframes friends-window-skeleton {
+  from {
+    background-position: 150% 0;
+  }
+
+  to {
+    background-position: -50% 0;
+  }
+}

@@ -1,0 +1,175 @@
+import {
+  cloudSaveAutomaticSyncSettingsSublevel,
+  db,
+  gamesSublevel,
+  levelKeys,
+} from "@main/level";
+import type {
+  CloudSaveAutomaticSyncMode,
+  CloudSaveAutomaticSyncModeChangedEvent,
+  GameShop,
+} from "@types";
+
+import { WindowManager } from "../window-manager";
+import { assertCloudSaveSubscription } from "./cloud-save-access";
+import { assertLegacyCloudSaveWriteAllowed } from "./legacy-cloud-save-policy";
+import { assertCloudSaveV2Eligible } from "./assert-cloud-save-executable";
+import {
+  getCloudSaveAutomaticSyncStateForMode,
+  getNextCloudSaveAutomaticSyncMode,
+  resolveStoredCloudSaveAutomaticSyncModeForShop,
+} from "./automatic-sync-mode";
+
+const getAutomaticSyncKey = (shop: GameShop, objectId: string) =>
+  levelKeys.game(shop, objectId);
+
+const notifyAutomaticSyncModeChanged = (
+  objectId: string,
+  shop: GameShop,
+  mode: CloudSaveAutomaticSyncMode
+) => {
+  const event: CloudSaveAutomaticSyncModeChangedEvent = {
+    gameId: { objectId, shop },
+    mode,
+  };
+
+  WindowManager.sendToAppWindows(
+    "on-cloud-save-automatic-sync-mode-changed",
+    event
+  );
+  WindowManager.sendToAppWindows("on-library-batch-complete");
+};
+
+const readCloudSaveAutomaticSyncMode = async (
+  objectId: string,
+  shop: GameShop
+) => {
+  const key = getAutomaticSyncKey(shop, objectId);
+  const [storedV2Enabled, game] = await Promise.all([
+    cloudSaveAutomaticSyncSettingsSublevel.get(key),
+    gamesSublevel.get(key),
+  ]);
+  const legacyEnabled = game?.automaticCloudSync === true;
+  // Managed Epic installs start on Epic's own save sync; Hydra is opt-in and
+  // stays off while Epic's sync is on, including values stored before this.
+  const managedEpic = shop === "epic" && !!game?.epicInstallation;
+  const epicSyncEnabled =
+    managedEpic && game?.epicInstallation?.automaticSaveSync !== false;
+  let v2Enabled = storedV2Enabled;
+  if (epicSyncEnabled) v2Enabled = false;
+  else if (managedEpic) v2Enabled = storedV2Enabled ?? false;
+  const mode = resolveStoredCloudSaveAutomaticSyncModeForShop(
+    shop,
+    legacyEnabled,
+    v2Enabled,
+    game?.platform,
+    objectId
+  );
+
+  return { game, key, mode };
+};
+
+const persistCloudSaveAutomaticSyncMode = async (
+  objectId: string,
+  shop: GameShop,
+  mode: CloudSaveAutomaticSyncMode
+) => {
+  const key = getAutomaticSyncKey(shop, objectId);
+  const game = await gamesSublevel.get(key);
+  const state = getCloudSaveAutomaticSyncStateForMode(mode);
+  const batch = db.batch();
+
+  if (game && game.automaticCloudSync !== state.legacyEnabled) {
+    batch.put(
+      key,
+      {
+        ...game,
+        automaticCloudSync: state.legacyEnabled,
+      },
+      { sublevel: gamesSublevel }
+    );
+  }
+
+  batch.put(key, state.v2Enabled, {
+    sublevel: cloudSaveAutomaticSyncSettingsSublevel,
+  });
+
+  await batch.write();
+  notifyAutomaticSyncModeChanged(objectId, shop, mode);
+};
+
+export const getCloudSaveAutomaticSyncMode = async (
+  objectId: string,
+  shop: GameShop
+): Promise<CloudSaveAutomaticSyncMode> => {
+  return (await readCloudSaveAutomaticSyncMode(objectId, shop)).mode;
+};
+
+export const getCloudSaveAutomaticSyncEnabled = async (
+  objectId: string,
+  shop: GameShop
+) => (await getCloudSaveAutomaticSyncMode(objectId, shop)) === "v2";
+
+const saveProviderLocks = new Map<string, Promise<unknown>>();
+
+/** Serializes the paired Epic/Hydra automatic save toggle writes per game. */
+export const withAutomaticSaveProviderLock = <T>(
+  objectId: string,
+  task: () => Promise<T>
+): Promise<T> => {
+  const previous = saveProviderLocks.get(objectId) ?? Promise.resolve();
+  const result = previous.catch(() => undefined).then(task);
+  const tail = result.catch(() => undefined);
+  saveProviderLocks.set(objectId, tail);
+  void tail.then(() => {
+    if (saveProviderLocks.get(objectId) === tail)
+      saveProviderLocks.delete(objectId);
+  });
+  return result;
+};
+
+export const setCloudSaveAutomaticSyncEnabled = async (
+  objectId: string,
+  shop: GameShop,
+  enabled: boolean
+) => {
+  if (enabled) {
+    await assertCloudSaveV2Eligible(objectId, shop);
+    assertCloudSaveSubscription();
+  }
+
+  const { mode: currentMode } = await readCloudSaveAutomaticSyncMode(
+    objectId,
+    shop
+  );
+  const nextMode = getNextCloudSaveAutomaticSyncMode(
+    currentMode,
+    "v2",
+    enabled
+  );
+
+  await persistCloudSaveAutomaticSyncMode(objectId, shop, nextMode);
+
+  return enabled;
+};
+
+export const setLegacyCloudSaveAutomaticSyncEnabled = async (
+  objectId: string,
+  shop: GameShop,
+  enabled: boolean
+) => {
+  const { game, mode: currentMode } = await readCloudSaveAutomaticSyncMode(
+    objectId,
+    shop
+  );
+  assertLegacyCloudSaveWriteAllowed(game);
+  const nextMode = getNextCloudSaveAutomaticSyncMode(
+    currentMode,
+    "legacy",
+    enabled
+  );
+
+  await persistCloudSaveAutomaticSyncMode(objectId, shop, nextMode);
+
+  return enabled;
+};

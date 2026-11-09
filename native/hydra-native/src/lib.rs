@@ -1,0 +1,621 @@
+mod active_window;
+mod cloud_save;
+mod constants;
+mod desktop_duplication;
+mod in_place_extraction;
+mod kde_focus;
+mod linux_process;
+mod screenshot_input;
+mod torrent;
+mod window_bounds;
+mod window_client;
+mod window_order;
+
+pub use cloud_save::hashing::{build_snapshot_aggregate_hash, hash_local_save_file};
+pub use cloud_save::local_snapshot::build_local_game_snapshot;
+pub use cloud_save::manifest::get_save_rules_for_game;
+pub use cloud_save::path_resolution::resolve_save_rules;
+pub use cloud_save::pipeline::build_local_game_snapshot_pipeline;
+pub use cloud_save::restore::{
+    cleanup_restore_temp_snapshot, delete_local_save_targets, download_restore_blob_to_temp,
+    replace_restore_targets, resolve_restore_targets, should_skip_restore_file,
+    verify_downloaded_restore_file,
+};
+pub use cloud_save::save_scanner::scan_resolved_save_rules;
+pub use cloud_save::upload::upload_local_save_blob;
+
+use std::fs::File;
+use std::io::{BufReader, BufWriter};
+use std::path::{Path, PathBuf};
+use std::{cmp::Ordering, collections::HashMap};
+
+use image::codecs::gif::{GifDecoder, GifEncoder, Repeat};
+use image::codecs::png::PngDecoder;
+use image::codecs::webp::WebPDecoder;
+use image::imageops::{crop_imm, resize, FilterType};
+use image::{AnimationDecoder, Frame, ImageFormat, ImageReader, ImageResult, RgbaImage};
+use napi::bindgen_prelude::{Buffer, Error};
+use napi_derive::napi;
+use sysinfo::{ProcessesToUpdate, System};
+use uuid::Uuid;
+
+#[napi(object)]
+pub struct ProcessedImageData {
+    pub image_path: String,
+    pub mime_type: String,
+}
+
+#[napi(object)]
+pub struct ProcessedSizedImageData {
+    pub image_path: String,
+    pub mime_type: String,
+    pub is_animated: bool,
+}
+
+#[napi(object)]
+pub struct NativeProcessPayload {
+    pub exe: Option<String>,
+    pub pid: u32,
+    pub parent_pid: Option<u32>,
+    pub name: String,
+    pub environ: Option<HashMap<String, String>>,
+    pub cwd: Option<String>,
+    pub start_time: Option<String>,
+    pub invocation_id: Option<String>,
+    pub wine_prefix_path: Option<String>,
+    pub pe_executable_path: Option<String>,
+    pub inspection_complete: Option<bool>,
+}
+
+#[napi(object)]
+pub struct NativeActiveWindow {
+    pub window_id: String,
+    pub process_id: Option<u32>,
+}
+
+#[napi]
+pub fn get_linux_active_window() -> Option<NativeActiveWindow> {
+    active_window::get_active_window().map(|(window_id, process_id)| NativeActiveWindow {
+        window_id: window_id.to_string(),
+        process_id,
+    })
+}
+
+#[napi(object)]
+pub struct NativeForegroundWindow {
+    pub window_handle: String,
+    pub process_id: u32,
+}
+
+#[napi]
+pub fn get_windows_foreground_window() -> Option<NativeForegroundWindow> {
+    window_order::get_foreground_window().map(|(window_handle, process_id)| {
+        NativeForegroundWindow {
+            window_handle,
+            process_id,
+        }
+    })
+}
+
+#[napi(object)]
+pub struct NativeScreenRect {
+    pub left: i32,
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+}
+
+#[napi(object)]
+pub struct NativeWindowBounds {
+    pub frame: NativeScreenRect,
+    pub client: NativeScreenRect,
+}
+
+fn to_native_rect(rect: window_bounds::ScreenRect) -> NativeScreenRect {
+    NativeScreenRect {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+    }
+}
+
+#[napi]
+pub fn get_windows_window_bounds(window_handle: String) -> Option<NativeWindowBounds> {
+    window_bounds::get_window_bounds(&window_handle).map(|bounds| NativeWindowBounds {
+        frame: to_native_rect(bounds.frame),
+        client: to_native_rect(bounds.client),
+    })
+}
+
+#[napi(object)]
+pub struct NativeDesktopFrame {
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Buffer,
+}
+
+#[napi(object)]
+pub struct NativeBgraScreenshotOptions {
+    pub pixels: Buffer,
+    pub width: u32,
+    pub height: u32,
+    pub quality: u8,
+    pub preview_max_width: u32,
+    pub preview_quality: u8,
+}
+
+#[napi(object)]
+pub struct NativeEncodedScreenshot {
+    pub jpeg: Buffer,
+    pub preview: Buffer,
+}
+
+#[napi]
+pub async fn prepare_windows_desktop_capture() -> napi::Result<()> {
+    tokio::task::spawn_blocking(desktop_duplication::prepare_capture_device)
+        .await
+        .map_err(|err| Error::from_reason(err.to_string()))?
+        .map_err(Error::from_reason)
+}
+
+#[napi]
+pub async fn release_windows_desktop_capture() -> napi::Result<()> {
+    tokio::task::spawn_blocking(desktop_duplication::release_capture_device)
+        .await
+        .map_err(|err| Error::from_reason(err.to_string()))
+}
+
+#[napi]
+pub async fn capture_windows_desktop_frame(
+    window_handle: String,
+) -> napi::Result<Option<NativeDesktopFrame>> {
+    let frame = tokio::task::spawn_blocking(move || {
+        desktop_duplication::capture_window_monitor(&window_handle)
+    })
+    .await
+    .map_err(|err| Error::from_reason(err.to_string()))?
+    .map_err(Error::from_reason)?;
+
+    Ok(frame.map(|frame| NativeDesktopFrame {
+        width: frame.width,
+        height: frame.height,
+        pixels: frame.pixels.into(),
+    }))
+}
+
+#[napi]
+pub async fn encode_bgra_screenshot(
+    options: NativeBgraScreenshotOptions,
+) -> napi::Result<NativeEncodedScreenshot> {
+    let encoded = tokio::task::spawn_blocking(move || {
+        desktop_duplication::encode_bgra_screenshot(
+            &options.pixels,
+            options.width,
+            options.height,
+            options.quality,
+            options.preview_max_width,
+            options.preview_quality,
+        )
+    })
+    .await
+    .map_err(|err| Error::from_reason(err.to_string()))?
+    .map_err(Error::from_reason)?;
+
+    Ok(NativeEncodedScreenshot {
+        jpeg: encoded.jpeg.into(),
+        preview: encoded.preview.into(),
+    })
+}
+
+#[napi]
+pub fn get_linux_window_client_pid(window_id: String) -> Option<u32> {
+    window_client::get_window_client_pid(&window_id)
+}
+
+#[napi]
+pub fn get_kde_focused_process_id() -> napi::Result<Option<u32>> {
+    kde_focus::focused_process_id().map_err(Error::from_reason)
+}
+
+#[napi]
+pub fn start_kde_focus_watch() {
+    kde_focus::start_watch();
+}
+
+#[napi]
+pub fn stop_kde_focus_watch() {
+    kde_focus::stop();
+}
+
+#[napi]
+pub fn process_profile_image(
+    image_path: String,
+    target_extension: Option<String>,
+) -> napi::Result<ProcessedImageData> {
+    let input_path = PathBuf::from(image_path);
+
+    if !input_path.exists() {
+        return Err(Error::from_reason("Image file not found"));
+    }
+
+    let format = detect_image_format(&input_path)?;
+    let animated = is_animated_image(&input_path, format)?;
+
+    if !animated {
+        return Ok(ProcessedImageData {
+            image_path: input_path.to_string_lossy().to_string(),
+            mime_type: mime_type_from_format_or_path(format, &input_path),
+        });
+    }
+
+    let extension = target_extension
+        .map(|value| value.to_ascii_lowercase())
+        .unwrap_or_else(|| "webp".to_string());
+
+    let output_format = output_format_from_extension(&extension)?;
+    let output_path = build_temp_output_path(&extension);
+
+    let image = ImageReader::open(&input_path)
+        .map_err(|err| Error::from_reason(err.to_string()))?
+        .with_guessed_format()
+        .map_err(|err| Error::from_reason(err.to_string()))?
+        .decode()
+        .map_err(|err| Error::from_reason(err.to_string()))?;
+
+    image
+        .save_with_format(&output_path, output_format)
+        .map_err(|err| Error::from_reason(err.to_string()))?;
+
+    Ok(ProcessedImageData {
+        image_path: output_path.to_string_lossy().to_string(),
+        mime_type: mime_type_from_format_or_path(Some(output_format), &output_path),
+    })
+}
+
+#[napi]
+pub async fn process_image(
+    image_path: String,
+    output_path_base: String,
+    width: u32,
+    height: u32,
+    preserve_animation: bool,
+) -> napi::Result<ProcessedSizedImageData> {
+    tokio::task::spawn_blocking(move || {
+        process_image_sync(
+            image_path,
+            output_path_base,
+            width,
+            height,
+            preserve_animation,
+        )
+    })
+    .await
+    .map_err(|err| Error::from_reason(err.to_string()))?
+}
+
+fn process_image_sync(
+    image_path: String,
+    output_path_base: String,
+    width: u32,
+    height: u32,
+    preserve_animation: bool,
+) -> napi::Result<ProcessedSizedImageData> {
+    if width == 0 || height == 0 {
+        return Err(Error::from_reason("Invalid output dimensions"));
+    }
+
+    let input_path = PathBuf::from(image_path);
+
+    if !input_path.exists() {
+        return Err(Error::from_reason("Image file not found"));
+    }
+
+    let format = detect_image_format(&input_path)?;
+    let is_animated = preserve_animation && is_animated_image(&input_path, format)?;
+
+    if is_animated {
+        let output_path = with_extension(&output_path_base, "gif");
+        resize_animated_image(&input_path, format, &output_path, width, height)?;
+
+        return Ok(ProcessedSizedImageData {
+            image_path: output_path.to_string_lossy().to_string(),
+            mime_type: "image/gif".to_string(),
+            is_animated: true,
+        });
+    }
+
+    let output_path = with_extension(&output_path_base, "webp");
+    resize_static_image(&input_path, &output_path, width, height)?;
+
+    Ok(ProcessedSizedImageData {
+        image_path: output_path.to_string_lossy().to_string(),
+        mime_type: "image/webp".to_string(),
+        is_animated: false,
+    })
+}
+
+#[napi]
+pub fn list_processes() -> Vec<NativeProcessPayload> {
+    let mut system = System::new_all();
+    system.refresh_processes(ProcessesToUpdate::All, true);
+
+    let mut processes: Vec<NativeProcessPayload> = system
+        .processes()
+        .values()
+        .map(|process| {
+            let include_linux_extras = !cfg!(target_os = "windows");
+            let linux = cfg!(target_os = "linux").then(|| {
+                linux_process::inspect_process(
+                    process.pid().as_u32(),
+                    process.exe(),
+                    &process.name().to_string_lossy(),
+                    process.cwd(),
+                )
+            });
+
+            NativeProcessPayload {
+                exe: process
+                    .exe()
+                    .map(|value| value.to_string_lossy().to_string()),
+                pid: process.pid().as_u32(),
+                parent_pid: process.parent().map(|pid| pid.as_u32()),
+                name: process.name().to_string_lossy().to_string(),
+                cwd: if include_linux_extras {
+                    process
+                        .cwd()
+                        .map(|value| value.to_string_lossy().to_string())
+                } else {
+                    None
+                },
+                environ: if include_linux_extras {
+                    let env_map: HashMap<String, String> = if let Some(inspection) = &linux {
+                        inspection.environment.clone()
+                    } else {
+                        process
+                            .environ()
+                            .iter()
+                            .filter_map(|entry| {
+                                let entry_value = entry.to_string_lossy();
+                                entry_value.split_once('=').and_then(|(key, value)| {
+                                    if key.is_empty() {
+                                        None
+                                    } else {
+                                        Some((key.to_string(), value.to_string()))
+                                    }
+                                })
+                            })
+                            .collect()
+                    };
+
+                    if env_map.is_empty() {
+                        None
+                    } else {
+                        Some(env_map)
+                    }
+                } else {
+                    None
+                },
+                start_time: linux.as_ref().and_then(|value| value.start_time.clone()),
+                invocation_id: linux.as_ref().and_then(|value| value.invocation_id.clone()),
+                wine_prefix_path: linux
+                    .as_ref()
+                    .and_then(|value| value.wine_prefix_path.clone()),
+                pe_executable_path: linux
+                    .as_ref()
+                    .and_then(|value| value.pe_executable_path.clone()),
+                inspection_complete: linux.as_ref().map(|value| value.complete),
+            }
+        })
+        .collect();
+
+    processes.sort_by(|left, right| {
+        let by_pid = left.pid.cmp(&right.pid);
+        if by_pid == Ordering::Equal {
+            left.name.cmp(&right.name)
+        } else {
+            by_pid
+        }
+    });
+
+    processes
+}
+
+fn detect_image_format(path: &Path) -> napi::Result<Option<ImageFormat>> {
+    let reader = ImageReader::open(path).map_err(|err| Error::from_reason(err.to_string()))?;
+
+    let guessed = reader
+        .with_guessed_format()
+        .map_err(|err| Error::from_reason(err.to_string()))?;
+
+    Ok(guessed.format())
+}
+
+fn is_animated_image(path: &Path, format: Option<ImageFormat>) -> napi::Result<bool> {
+    match format {
+        Some(ImageFormat::Gif) => is_gif_animated(path),
+        Some(ImageFormat::WebP) => is_webp_animated(path),
+        Some(ImageFormat::Png) => is_apng(path),
+        _ => Ok(false),
+    }
+}
+
+fn is_gif_animated(path: &Path) -> napi::Result<bool> {
+    let file = File::open(path).map_err(|err| Error::from_reason(err.to_string()))?;
+    let decoder =
+        GifDecoder::new(BufReader::new(file)).map_err(|err| Error::from_reason(err.to_string()))?;
+
+    let mut frames = decoder.into_frames();
+    let _ = frames.next().transpose();
+    Ok(matches!(frames.next().transpose(), Ok(Some(_))))
+}
+
+fn is_webp_animated(path: &Path) -> napi::Result<bool> {
+    let file = File::open(path).map_err(|err| Error::from_reason(err.to_string()))?;
+    let decoder = WebPDecoder::new(BufReader::new(file))
+        .map_err(|err| Error::from_reason(err.to_string()))?;
+
+    Ok(decoder.has_animation())
+}
+
+fn is_apng(path: &Path) -> napi::Result<bool> {
+    let file = File::open(path).map_err(|err| Error::from_reason(err.to_string()))?;
+    let decoder =
+        PngDecoder::new(BufReader::new(file)).map_err(|err| Error::from_reason(err.to_string()))?;
+
+    decoder
+        .is_apng()
+        .map_err(|err| Error::from_reason(err.to_string()))
+}
+
+fn resize_animated_image(
+    input_path: &Path,
+    format: Option<ImageFormat>,
+    output_path: &Path,
+    width: u32,
+    height: u32,
+) -> napi::Result<()> {
+    match format {
+        Some(ImageFormat::Gif) => {
+            let input_file =
+                File::open(input_path).map_err(|err| Error::from_reason(err.to_string()))?;
+            let decoder = GifDecoder::new(BufReader::new(input_file))
+                .map_err(|err| Error::from_reason(err.to_string()))?;
+            encode_animation_frames_to_gif(decoder.into_frames(), output_path, width, height)
+        }
+        Some(ImageFormat::WebP) => {
+            let input_file =
+                File::open(input_path).map_err(|err| Error::from_reason(err.to_string()))?;
+            let decoder = WebPDecoder::new(BufReader::new(input_file))
+                .map_err(|err| Error::from_reason(err.to_string()))?;
+            encode_animation_frames_to_gif(decoder.into_frames(), output_path, width, height)
+        }
+        Some(ImageFormat::Png) => {
+            let input_file =
+                File::open(input_path).map_err(|err| Error::from_reason(err.to_string()))?;
+            let decoder = PngDecoder::new(BufReader::new(input_file))
+                .map_err(|err| Error::from_reason(err.to_string()))?
+                .apng()
+                .map_err(|err| Error::from_reason(err.to_string()))?;
+            encode_animation_frames_to_gif(decoder.into_frames(), output_path, width, height)
+        }
+        _ => Err(Error::from_reason("Unsupported animated image format")),
+    }
+}
+
+fn encode_animation_frames_to_gif<I>(
+    frames: I,
+    output_path: &Path,
+    width: u32,
+    height: u32,
+) -> napi::Result<()>
+where
+    I: IntoIterator<Item = ImageResult<Frame>>,
+{
+    let output_file =
+        File::create(output_path).map_err(|err| Error::from_reason(err.to_string()))?;
+    let mut encoder = GifEncoder::new(BufWriter::new(output_file));
+    encoder
+        .set_repeat(Repeat::Infinite)
+        .map_err(|err| Error::from_reason(err.to_string()))?;
+
+    for frame in frames {
+        let frame = frame.map_err(|err| Error::from_reason(err.to_string()))?;
+        let delay = frame.delay().clone();
+        let resized = resize_cover_rgba(&frame.into_buffer(), width, height)?;
+
+        encoder
+            .encode_frame(Frame::from_parts(resized, 0, 0, delay))
+            .map_err(|err| Error::from_reason(err.to_string()))?;
+    }
+
+    Ok(())
+}
+
+fn resize_static_image(
+    input_path: &Path,
+    output_path: &Path,
+    width: u32,
+    height: u32,
+) -> napi::Result<()> {
+    let image = ImageReader::open(input_path)
+        .map_err(|err| Error::from_reason(err.to_string()))?
+        .with_guessed_format()
+        .map_err(|err| Error::from_reason(err.to_string()))?
+        .decode()
+        .map_err(|err| Error::from_reason(err.to_string()))?
+        .to_rgba8();
+
+    let resized = resize_cover_rgba(&image, width, height)?;
+    resized
+        .save_with_format(output_path, ImageFormat::WebP)
+        .map_err(|err| Error::from_reason(err.to_string()))
+}
+
+fn resize_cover_rgba(image: &RgbaImage, width: u32, height: u32) -> napi::Result<RgbaImage> {
+    let source_width = image.width();
+    let source_height = image.height();
+
+    if source_width == 0 || source_height == 0 {
+        return Err(Error::from_reason("Could not read source image dimensions"));
+    }
+
+    let width_scale = width as f32 / source_width as f32;
+    let height_scale = height as f32 / source_height as f32;
+    let scale = width_scale.max(height_scale);
+
+    let resized_width = ((source_width as f32 * scale).ceil() as u32).max(width);
+    let resized_height = ((source_height as f32 * scale).ceil() as u32).max(height);
+    let resized = resize(image, resized_width, resized_height, FilterType::Lanczos3);
+
+    let left = (resized_width.saturating_sub(width)) / 2;
+    let top = (resized_height.saturating_sub(height)) / 2;
+
+    Ok(crop_imm(&resized, left, top, width, height).to_image())
+}
+
+fn with_extension(output_path_base: &str, extension: &str) -> PathBuf {
+    let mut output_path = PathBuf::from(output_path_base);
+    output_path.set_extension(extension);
+    output_path
+}
+
+fn output_format_from_extension(extension: &str) -> napi::Result<ImageFormat> {
+    match extension {
+        "png" => Ok(ImageFormat::Png),
+        "jpg" | "jpeg" => Ok(ImageFormat::Jpeg),
+        "webp" => Ok(ImageFormat::WebP),
+        _ => Err(Error::from_reason("Unsupported target extension")),
+    }
+}
+
+fn build_temp_output_path(extension: &str) -> PathBuf {
+    let mut output_path = std::env::temp_dir();
+    output_path.push(format!("{}.{}", Uuid::new_v4(), extension));
+    output_path
+}
+
+fn mime_type_from_format_or_path(format: Option<ImageFormat>, path: &Path) -> String {
+    if let Some(value) = mime_type_from_image_format(format) {
+        return value.to_string();
+    }
+
+    mime_guess::from_path(path)
+        .first_or_octet_stream()
+        .essence_str()
+        .to_string()
+}
+
+fn mime_type_from_image_format(format: Option<ImageFormat>) -> Option<&'static str> {
+    match format {
+        Some(ImageFormat::Png) => Some("image/png"),
+        Some(ImageFormat::Jpeg) => Some("image/jpeg"),
+        Some(ImageFormat::Gif) => Some("image/gif"),
+        Some(ImageFormat::WebP) => Some("image/webp"),
+        Some(ImageFormat::Bmp) => Some("image/bmp"),
+        Some(ImageFormat::Ico) => Some("image/x-icon"),
+        Some(ImageFormat::Tiff) => Some("image/tiff"),
+        Some(ImageFormat::Avif) => Some("image/avif"),
+        _ => None,
+    }
+}

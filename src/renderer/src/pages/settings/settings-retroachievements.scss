@@ -1,0 +1,41 @@
+@use "../../scss/globals.scss";
+
+.settings-retroachievements {
+  &__emulator-note {
+    margin: 0;
+    color: globals.$body-color;
+    font-size: globals.$small-font-size;
+    line-height: 1.5;
+  }
+  &__modal {
+    display: flex;
+    flex-direction: column;
+    gap: calc(globals.$spacing-unit * 2);
+  }
+
+  &__modal-note {
+    margin: 0;
+    color: globals.$body-color;
+    line-height: 1.5;
+  }
+
+  &__modal-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: globals.$spacing-unit;
+  }
+}
+
+.settings-retroachievements__reconnect-hint {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    text-decoration: underline;
+  }
+}

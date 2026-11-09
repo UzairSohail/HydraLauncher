@@ -1,0 +1,118 @@
+@use "../../scss/globals.scss";
+
+.game-details {
+  &__review-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  &__review-submit {
+    display: inline-flex;
+  }
+
+  &__review-form-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  &__review-score-container {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  &__review-score-select {
+    background-color: #2a2a2a;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    color: #ffffff;
+    padding: 6px 12px;
+    font-size: globals.$body-font-size;
+    cursor: pointer;
+    transition:
+      border-color 0.2s ease,
+      background-color 0.2s ease;
+
+    &:focus {
+      outline: none;
+    }
+
+    &--red {
+      border-color: #e74c3c;
+      background-color: rgba(231, 76, 60, 0.1);
+    }
+
+    &--yellow {
+      border-color: #f39c12;
+      background-color: rgba(243, 156, 18, 0.1);
+    }
+
+    &--green {
+      border-color: #27ae60;
+      background-color: rgba(39, 174, 96, 0.1);
+    }
+
+    option {
+      background-color: #2a2a2a;
+      color: #ffffff;
+    }
+  }
+
+  &__star-rating {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  &__star {
+    background: none;
+    border: none;
+    color: #666666;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+
+    &:hover {
+      color: #ffffff;
+      background-color: rgba(255, 255, 255, 0.1);
+      transform: scale(1.1);
+    }
+
+    &--filled {
+      color: #ffffff;
+
+      &.game-details__review-score-select--red {
+        color: #e74c3c;
+      }
+
+      &.game-details__review-score-select--yellow {
+        color: #f39c12;
+      }
+
+      &.game-details__review-score-select--green {
+        color: #27ae60;
+      }
+    }
+
+    &--empty {
+      color: #666666;
+
+      &:hover {
+        color: #ffffff;
+      }
+    }
+
+    svg {
+      fill: currentColor;
+    }
+  }
+}

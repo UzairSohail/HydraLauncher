@@ -1,0 +1,152 @@
+@use "../../../scss/globals.scss";
+
+.filter-dropdown {
+  position: relative;
+  display: inline-flex;
+
+  &__trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid globals.$border-color;
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: globals.$hint-font-size;
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.07);
+      border-color: rgba(255, 255, 255, 0.14);
+    }
+
+    &--open {
+      background: rgba(255, 255, 255, 0.07);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+  }
+
+  &__placeholder {
+    color: rgba(255, 255, 255, 0.45);
+    font-weight: 400;
+  }
+
+  &__value {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: globals.$spacing-unit;
+    color: rgba(255, 255, 255, 0.95);
+
+    svg {
+      flex-shrink: 0;
+    }
+  }
+
+  &__value-label {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__option-image {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    border-radius: 4px;
+    object-fit: cover;
+  }
+
+  &__chevron {
+    color: rgba(255, 255, 255, 0.5);
+    margin-left: 2px;
+    transition: transform 0.15s ease;
+
+    .filter-dropdown__trigger--open & {
+      transform: rotate(180deg);
+    }
+  }
+
+  &__menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 100%;
+    width: max-content;
+    max-width: min(360px, calc(100vw - 32px));
+    max-height: min(360px, 60vh);
+    overflow-y: auto;
+    background: globals.$dark-background-color;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 4px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    animation: filter-dropdown-in 0.12s ease;
+  }
+
+  &__option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: globals.$spacing-unit calc(globals.$spacing-unit * 1.5);
+    background: none;
+    border: none;
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: globals.$hint-font-size;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+      background-color 0.12s ease,
+      color 0.12s ease;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(255, 255, 255, 0.95);
+    }
+
+    &--active {
+      color: rgba(255, 255, 255, 0.95);
+    }
+  }
+
+  &__option-icon {
+    flex-shrink: 0;
+  }
+
+  &__option-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-align: left;
+    text-overflow: ellipsis;
+  }
+
+  &__check {
+    color: globals.$muted-color;
+    flex-shrink: 0;
+  }
+}
+
+@keyframes filter-dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

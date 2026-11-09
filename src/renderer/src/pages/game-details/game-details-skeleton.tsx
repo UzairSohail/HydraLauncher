@@ -1,0 +1,151 @@
+import Skeleton from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
+import { AchievementsSkeletonList } from "./sidebar/achievements-skeleton-list";
+
+export function GameDetailsSkeleton() {
+  return (
+    <div className="game-details__wrapper game-details__skeleton">
+      <section className="game-details__container">
+        <div className="game-details__hero">
+          <Skeleton
+            height={350}
+            style={{
+              borderRadius: "0px 0px 8px 8px",
+              position: "absolute",
+              width: "100%",
+              zIndex: 0,
+            }}
+          />
+
+          <div className="game-details__hero-logo-backdrop">
+            <div className="game-details__hero-content">
+              <div className="game-details__game-logo" />
+              <div className="game-details__hero-buttons game-details__hero-buttons--right" />
+            </div>
+
+            <div className="game-details__hero-panel">
+              <div className="hero-panel__container">
+                <div className="hero-panel">
+                  <div className="hero-panel__content">
+                    <Skeleton height={16} width={150} />
+                    <Skeleton height={16} width={120} />
+                  </div>
+                  <div className="hero-panel__actions" style={{ gap: "16px" }}>
+                    <Skeleton
+                      height={36}
+                      width={36}
+                      style={{ borderRadius: "6px" }}
+                    />
+                    <Skeleton
+                      height={36}
+                      width={36}
+                      style={{ borderRadius: "6px" }}
+                    />
+                    <Skeleton
+                      height={36}
+                      width={100}
+                      style={{ borderRadius: "6px" }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="game-details__description-container">
+          <div className="game-details__description-content">
+            <div className="description-header">
+              <section className="description-header__info">
+                <Skeleton height={16} width={200} />
+                <Skeleton height={16} width={150} />
+              </section>
+            </div>
+
+            <div className="gallery-slider__container">
+              <div className="gallery-slider__viewport">
+                <Skeleton
+                  height="100%"
+                  width="100%"
+                  className="gallery-slider__media"
+                />
+              </div>
+              <div className="gallery-slider__preview">
+                {Array.from({ length: 8 }).map((_, index) => (
+                  <div
+                    key={index}
+                    className="gallery-slider__preview-button gallery-slider__preview-button--active"
+                  >
+                    <Skeleton height="100%" width="100%" />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="game-details__description">
+              <Skeleton count={8} height={22} style={{ marginBottom: "8px" }} />
+              <Skeleton height={22} width="60%" />
+            </div>
+          </div>
+
+          <aside className="content-sidebar">
+            <div className="sidebar-section">
+              <div className="sidebar-section__header">
+                <div
+                  className="sidebar-section__button"
+                  style={{ pointerEvents: "none" }}
+                >
+                  <Skeleton height={18} width={18} />
+                  <Skeleton height={18} width={136} />
+                </div>
+              </div>
+
+              <div className="sidebar-section__content">
+                <AchievementsSkeletonList />
+              </div>
+            </div>
+            <div className="sidebar-section">
+              <div className="sidebar-section__header">
+                <div
+                  className="sidebar-section__button"
+                  style={{ pointerEvents: "none" }}
+                >
+                  <Skeleton height={18} width={18} />
+                  <Skeleton height={18} width={88} />
+                </div>
+              </div>
+
+              <div className="sidebar-section__content">
+                <div className="stats__section">
+                  <div className="stats__category">
+                    <div className="stats__category-title">
+                      <Skeleton height={14} width={14} />
+                      <Skeleton height={14} width={80} />
+                    </div>
+                    <Skeleton height={14} width={40} />
+                  </div>
+
+                  <div className="stats__category">
+                    <div className="stats__category-title">
+                      <Skeleton height={14} width={14} />
+                      <Skeleton height={14} width={70} />
+                    </div>
+                    <Skeleton height={14} width={35} />
+                  </div>
+
+                  <div className="stats__category">
+                    <div className="stats__category-title">
+                      <Skeleton height={14} width={14} />
+                      <Skeleton height={14} width={60} />
+                    </div>
+                    <Skeleton height={14} width={30} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </div>
+  );
+}

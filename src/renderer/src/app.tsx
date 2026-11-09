@@ -1,0 +1,820 @@
+import { AppTitleBar, Sidebar, Toast } from "@renderer/components";
+import { AutoUpdateSubHeader } from "@renderer/components/header/auto-update-sub-header";
+import { ScanGamesProvider } from "@renderer/context";
+import {
+  useAppDispatch,
+  useAppSelector,
+  useDownload,
+  useGamificationFeatureSync,
+  useGamificationProgressSync,
+  useDragTextSelection,
+  useLibrary,
+  useToast,
+  useUserDetails,
+} from "@renderer/hooks";
+import { useDownloadOptionsListener } from "@renderer/hooks/use-download-options-listener";
+import i18n from "i18next";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { WorkWonders } from "workwonders-sdk";
+
+import {
+  clearExtraction,
+  closeToast,
+  showToast,
+  failClassicsScan,
+  failRetroArchScan,
+  finishClassicsScan,
+  finishRetroArchScan,
+  hydrateClassicsScan,
+  hydrateRetroArchScan,
+  setExtractionProgress,
+  setGameRunning,
+  setLibrarySyncingRemote,
+  setLibraryAwaitingAccount,
+  setProfileBackground,
+  setUserDetails,
+  setUserPreferences,
+  toggleDraggingDisabled,
+  updateClassicsScanProgress,
+  updateRetroArchScanProgress,
+} from "@renderer/features";
+import { useTranslation } from "react-i18next";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useSubscription } from "./hooks/use-subscription";
+import { ArchiveDeletionModal } from "./pages/downloads/archive-deletion-error-modal";
+import { CloudSubscriptionModal } from "./pages/shared-modals/hydra-cloud/cloud-subscription-modal";
+import { AddFriendModal } from "./pages/profile/profile-content/add-friend-modal";
+import { ClassicsScanModal } from "./pages/settings/emulation/classics-scan-modal";
+import { RetroArchScanModal } from "./pages/settings/emulation/retroarch-scan-modal";
+import { CloudGiftNotificationModal } from "./pages/shared-modals/cloud-gift-notification-modal";
+import { LevelUpModal } from "./components/gamification";
+import { useMissingScreenshotsToast } from "./hooks/use-missing-screenshots-toast";
+import { useScreenshotUploadFailureToast } from "./hooks/use-screenshot-upload-failure-toast";
+import { LeaderboardNotificationLayer } from "./components/leaderboard-notification/leaderboard-notification-layer";
+import { playMessageSound } from "./pages/chat-window/chat-sounds";
+
+import type { UserPreferences } from "@types";
+import "./app.scss";
+import {
+  getAchievementSoundUrl,
+  getAchievementSoundVolume,
+  injectCustomCss,
+  removeCustomCss,
+} from "./helpers";
+import { levelDBService } from "./services/leveldb.service";
+
+export interface AppProps {
+  children: React.ReactNode;
+}
+
+type WorkWondersWithKnowledge = WorkWonders & {
+  knowledge?: {
+    initKnowledgeWidget?: () => void;
+    showArticle?: (articleId: number) => void;
+  };
+};
+
+export function App() {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const { updateLibrary, library, downloadLibrary } = useLibrary();
+
+  // Listen for new download options updates
+  useDownloadOptionsListener();
+  useDragTextSelection();
+
+  const { t } = useTranslation("app");
+
+  const { clearDownload, setLastPacket, lastPacket } = useDownload();
+
+  const workwondersRef = useRef<WorkWonders | null>(null);
+  const workwondersInitializingRef = useRef(false);
+
+  const {
+    hasActiveSubscription,
+    fetchUserDetails,
+    updateUserDetails,
+    clearUserDetails,
+  } = useUserDetails();
+
+  useGamificationFeatureSync();
+  useGamificationProgressSync();
+
+  const { hideHydraCloudModal, isHydraCloudModalVisible, hydraCloudFeature } =
+    useSubscription();
+
+  const dispatch = useAppDispatch();
+
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const draggingDisabled = useAppSelector(
+    (state) => state.window.draggingDisabled
+  );
+
+  const toast = useAppSelector((state) => state.toast);
+
+  const [version, setVersion] = useState("");
+
+  useEffect(() => {
+    window.electron.getVersion().then(setVersion);
+  }, []);
+
+  const { showSuccessToast, showErrorToast, showWarningToast } = useToast();
+  useMissingScreenshotsToast();
+  useScreenshotUploadFailureToast();
+
+  const [showArchiveDeletionModal, setShowArchiveDeletionModal] =
+    useState(false);
+  const [archivePaths, setArchivePaths] = useState<string[]>([]);
+  const [showAddFriendModal, setShowAddFriendModal] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      levelDBService.get("userPreferences", null, "json"),
+      updateLibrary(),
+    ]).then(([preferences]) => {
+      dispatch(setUserPreferences(preferences as UserPreferences | null));
+    });
+  }, [navigate, location.pathname, dispatch, updateLibrary]);
+
+  useEffect(() => {
+    const unsubscribe = window.electron.onUserPreferencesUpdated(
+      (preferences) => {
+        if (!preferences) {
+          dispatch(setUserPreferences(null));
+          return;
+        }
+
+        if (preferences.language && preferences.language !== i18n.language) {
+          void i18n.changeLanguage(preferences.language);
+        }
+
+        dispatch(setUserPreferences(preferences));
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [dispatch]);
+
+  useEffect(() => {
+    const unsubscribe = window.electron.onDownloadProgress(
+      (downloadProgress) => {
+        if (
+          downloadProgress?.progress === 1 &&
+          !downloadProgress.isCheckingFiles &&
+          !downloadProgress.isDownloadingMetadata
+        ) {
+          clearDownload();
+          updateLibrary();
+          return;
+        }
+
+        setLastPacket(downloadProgress);
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [clearDownload, setLastPacket, updateLibrary]);
+
+  useEffect(() => {
+    const unsubscribe = window.electron.onHardDelete(() => {
+      updateLibrary();
+    });
+
+    return () => unsubscribe();
+  }, [updateLibrary]);
+
+  useEffect(() => {
+    const refreshLibrary = () => {
+      void updateLibrary();
+    };
+
+    window.addEventListener("hydra:game-visibility-updated", refreshLibrary);
+    return () =>
+      window.removeEventListener(
+        "hydra:game-visibility-updated",
+        refreshLibrary
+      );
+  }, [updateLibrary]);
+
+  useEffect(() => {
+    if (!lastPacket?.gameId) return;
+
+    const activeGame = downloadLibrary.find(
+      (game) => game.id === lastPacket.gameId
+    );
+
+    if (!activeGame || activeGame.download?.status !== "active") {
+      clearDownload();
+    }
+  }, [clearDownload, lastPacket?.gameId, downloadLibrary]);
+
+  const setupWorkWonders = useCallback(
+    async (token?: string, locale?: string) => {
+      if (workwondersRef.current || workwondersInitializingRef.current) return;
+
+      workwondersInitializingRef.current = true;
+
+      const possibleLocales = ["en", "pt", "ru"];
+
+      const parsedLocale =
+        possibleLocales.find((l) => l === locale?.slice(0, 2)) ?? "en";
+
+      try {
+        const workwonders = new WorkWonders();
+
+        await workwonders.init({
+          organization: "hydra",
+          token,
+          locale: parsedLocale,
+        });
+
+        workwonders.changelog.initChangelogWidget();
+        workwonders.changelog.initChangelogWidgetMini();
+        const workWondersWithKnowledge =
+          workwonders as WorkWondersWithKnowledge;
+        workWondersWithKnowledge.knowledge?.initKnowledgeWidget?.();
+
+        if (token) {
+          workwonders.feedback.initFeedbackWidget();
+        }
+
+        workwondersRef.current = workwonders;
+      } catch (error) {
+        console.error("Failed to initialize Work Wonders SDK", error);
+      } finally {
+        workwondersInitializingRef.current = false;
+      }
+    },
+    [workwondersRef]
+  );
+
+  useEffect(() => {
+    const onClick = async (event: MouseEvent) => {
+      const userPreferences = await window.electron.getUserPreferences();
+      const language = userPreferences?.language ?? "en";
+
+      const articleMapping = {
+        pt: {
+          "cannot-write-directory": 1429,
+          seeding: 1442,
+          "peers-and-seeds": 1449,
+          "steam-achievements": 1412,
+          "install-duckstation": 6441,
+          "install-pcsx2": 6192,
+          "install-rpcs3": 6510,
+          "install-retroarch": 7108,
+          "install-ppsspp": 7315,
+          "install-dolphin": 7268,
+          "wii-saves": 7384,
+          "retroachievements-emulators": 6629,
+          "downloading-metadata": 7719,
+        },
+        en: {
+          "cannot-write-directory": 4122,
+          seeding: 4116,
+          "peers-and-seeds": 4119,
+          "steam-achievements": 4140,
+          "install-duckstation": 6465,
+          "install-pcsx2": 6390,
+          "install-rpcs3": 6524,
+          "install-retroarch": 7120,
+          "install-ppsspp": 7328,
+          "install-dolphin": 7281,
+          "wii-saves": 7406,
+          "retroachievements-emulators": 6692,
+          "downloading-metadata": 7773,
+        },
+        ru: {
+          "install-duckstation": 6479,
+          "install-pcsx2": 6429,
+          "install-rpcs3": 6541,
+          "install-retroarch": 7135,
+          "install-ppsspp": 7338,
+          "install-dolphin": 7292,
+          "wii-saves": 7422,
+          "retroachievements-emulators": 6717,
+          "downloading-metadata": 7848,
+        },
+        es: {
+          "install-duckstation": 6492,
+          "install-pcsx2": 6410,
+          "install-rpcs3": 6552,
+          "install-retroarch": 7142,
+          "install-ppsspp": 7375,
+          "install-dolphin": 7303,
+          "wii-saves": 7431,
+          "retroachievements-emulators": 6743,
+          "downloading-metadata": 7854,
+        },
+      };
+
+      const $helpCenterTarget = (event.target as HTMLElement).closest(
+        "[data-open-article]"
+      );
+
+      if ($helpCenterTarget) {
+        const article = $helpCenterTarget.getAttribute("data-open-article");
+        const articleId =
+          articleMapping[language.slice(0, 2)]?.[
+            article as keyof typeof articleMapping
+          ] ?? articleMapping["en"]?.[article as keyof typeof articleMapping];
+
+        if (articleId) {
+          const workWondersWithKnowledge =
+            workwondersRef.current as WorkWondersWithKnowledge | null;
+          workWondersWithKnowledge?.knowledge?.showArticle?.(articleId);
+        }
+      }
+    };
+
+    window.addEventListener("click", onClick);
+
+    return () => {
+      window.removeEventListener("click", onClick);
+    };
+  }, []);
+
+  const setupExternalResources = useCallback(async () => {
+    const cachedUserDetails = window.localStorage.getItem("userDetails");
+
+    if (cachedUserDetails) {
+      const { profileBackground, ...userDetails } =
+        JSON.parse(cachedUserDetails);
+
+      dispatch(setUserDetails(userDetails));
+      dispatch(setProfileBackground(profileBackground));
+    }
+
+    const userPreferences = await window.electron.getUserPreferences();
+    const userDetails = await fetchUserDetails().catch(() => null);
+
+    if (userDetails) {
+      updateUserDetails(userDetails);
+    }
+
+    setupWorkWonders(userDetails?.workwondersJwt, userPreferences?.language);
+
+    if (!document.getElementById("external-resources")) {
+      const $script = document.createElement("script");
+      $script.id = "external-resources";
+      $script.src = `${import.meta.env.RENDERER_VITE_EXTERNAL_RESOURCES_URL}/bundle.js?t=${Date.now()}`;
+      document.head.appendChild($script);
+    }
+  }, [fetchUserDetails, updateUserDetails, dispatch, setupWorkWonders]);
+
+  useEffect(() => {
+    setupExternalResources();
+  }, [setupExternalResources]);
+
+  const onSignIn = useCallback(() => {
+    dispatch(setLibraryAwaitingAccount(true));
+    fetchUserDetails().then((response) => {
+      if (response) {
+        updateUserDetails(response);
+        showSuccessToast(t("successfully_signed_in"));
+      }
+    });
+  }, [dispatch, fetchUserDetails, t, showSuccessToast, updateUserDetails]);
+
+  useEffect(() => {
+    const unsubscribe = window.electron.onGamesRunning((gamesRunning) => {
+      if (gamesRunning.length) {
+        const runningIds = new Set(gamesRunning.map((game) => game.id));
+        const concealedExecutables = new Set(
+          downloadLibrary
+            .filter(
+              (game) =>
+                game.isConcealed &&
+                game.executablePath &&
+                runningIds.has(game.id)
+            )
+            .map((game) => game.executablePath!.toLowerCase())
+        );
+        const lastGame = gamesRunning[gamesRunning.length - 1];
+        const libraryGame = library.find(
+          (library) => library.id === lastGame.id
+        );
+
+        if (
+          libraryGame &&
+          !concealedExecutables.has(
+            libraryGame.executablePath?.toLowerCase() ?? ""
+          )
+        ) {
+          dispatch(
+            setGameRunning({
+              ...libraryGame,
+              coverImageUrl: libraryGame.coverImageUrl ?? null,
+              sessionDurationInMillis: lastGame.sessionDurationInMillis,
+            })
+          );
+          return;
+        }
+      }
+      dispatch(setGameRunning(null));
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [dispatch, library, downloadLibrary]);
+
+  useEffect(() => {
+    window.electron.getActiveClassicsImport().then((snapshot) => {
+      if (snapshot) dispatch(hydrateClassicsScan(snapshot));
+    });
+
+    const unsubscribe = window.electron.onClassicsImportProgress((payload) => {
+      if (payload.type === "error") {
+        dispatch(failClassicsScan(payload.message));
+        return;
+      }
+
+      if (payload.type === "progress") {
+        dispatch(updateClassicsScanProgress(payload));
+        return;
+      }
+
+      dispatch(
+        finishClassicsScan({
+          cancelled: payload.type === "cancelled",
+          system: payload.system,
+          result: {
+            fileCount: payload.fileCount,
+            sizeBytes: payload.sizeBytes,
+            matched: payload.matched,
+            unmatched: payload.unmatched,
+            unmatchedFiles: payload.unmatchedFiles,
+          },
+        })
+      );
+      updateLibrary();
+    });
+
+    return () => unsubscribe();
+  }, [dispatch, updateLibrary]);
+
+  useEffect(() => {
+    window.electron.getActiveRetroArchImport().then((snapshot) => {
+      if (snapshot) dispatch(hydrateRetroArchScan(snapshot));
+    });
+
+    const unsubscribe = window.electron.onRetroArchImportProgress((payload) => {
+      if (payload.type === "error") {
+        dispatch(failRetroArchScan(payload.message));
+        return;
+      }
+
+      if (payload.type === "progress") {
+        dispatch(updateRetroArchScanProgress(payload));
+        return;
+      }
+
+      dispatch(
+        finishRetroArchScan({
+          cancelled: payload.type === "cancelled",
+          result: {
+            fileCount: payload.fileCount,
+            sizeBytes: payload.sizeBytes,
+            matched: payload.matched,
+            unmatched: payload.unmatched,
+            unmatchedFiles: payload.unmatchedFiles,
+          },
+        })
+      );
+      updateLibrary();
+    });
+
+    return () => unsubscribe();
+  }, [dispatch, updateLibrary]);
+
+  useEffect(() => {
+    let hasReceivedSyncState = false;
+
+    void window.electron.getRemoteLibrarySyncState().then((syncing) => {
+      if (!hasReceivedSyncState) dispatch(setLibrarySyncingRemote(syncing));
+    });
+
+    return window.electron.onRemoteLibrarySyncStateChange((syncing) => {
+      hasReceivedSyncState = true;
+
+      if (syncing) {
+        dispatch(setLibrarySyncingRemote(true));
+        return;
+      }
+
+      void updateLibrary().finally(() => {
+        dispatch(setLibrarySyncingRemote(false));
+        dispatch(setLibraryAwaitingAccount(false));
+      });
+    });
+  }, [dispatch, updateLibrary]);
+
+  useEffect(() => {
+    const listeners = [
+      window.electron.onSignIn(onSignIn),
+      window.electron.onLibraryBatchComplete(() => {
+        updateLibrary();
+      }),
+      window.electron.onDownloadsUpdated(() => {
+        updateLibrary();
+      }),
+      window.electron.onSignOut(() => clearUserDetails()),
+      window.electron.onExtractionProgress((shop, objectId, progress) => {
+        dispatch(setExtractionProgress({ shop, objectId, progress }));
+      }),
+      window.electron.onExtractionComplete(() => {
+        dispatch(clearExtraction());
+        updateLibrary();
+      }),
+      window.electron.onExtractionFailed((_shop, _objectId, failure) => {
+        dispatch(clearExtraction());
+        updateLibrary();
+
+        if (failure?.reason === "unsupported-format") {
+          showErrorToast(
+            t("extraction_unsupported_format_title", { ns: "downloads" }),
+            t("extraction_unsupported_format_description", {
+              ns: "downloads",
+              format: failure.format,
+            })
+          );
+          return;
+        }
+
+        if (failure?.reason === "file-not-found") {
+          showErrorToast(
+            t("extraction_file_not_found_title", { ns: "downloads" }),
+            t("extraction_file_not_found_description", { ns: "downloads" })
+          );
+          return;
+        }
+
+        showErrorToast(
+          t("extraction_failed_title", { ns: "downloads" }),
+          t("extraction_failed_description", { ns: "downloads" })
+        );
+      }),
+      window.electron.onGameExecutableNotFound(() => {
+        showErrorToast(
+          t("executable_not_found_title", { ns: "game_details" }),
+          t("executable_not_found_description", { ns: "game_details" })
+        );
+      }),
+      window.electron.onDownloadHalted((gameTitle) => {
+        updateLibrary();
+        showErrorToast(
+          t("download_halted_title", { ns: "downloads" }),
+          t("download_halted_description", {
+            ns: "downloads",
+            title: gameTitle,
+          })
+        );
+      }),
+      window.electron.onArchiveDeletionPrompt((paths) => {
+        setArchivePaths(paths);
+        setShowArchiveDeletionModal(true);
+      }),
+      window.electron.onGameInstallerClosed(
+        (_shop, _objectId, executableFound) => {
+          updateLibrary();
+
+          if (executableFound) {
+            showSuccessToast(
+              t("game_installed_title", { ns: "downloads" }),
+              t("game_installed_description", { ns: "downloads" })
+            );
+            return;
+          }
+
+          showWarningToast(
+            t("installed_game_not_found_title", { ns: "downloads" }),
+            t("installed_game_not_found_description", { ns: "downloads" })
+          );
+        }
+      ),
+      window.electron.onCommonRedistProgress(({ complete }) => {
+        if (!complete) return;
+
+        showSuccessToast(
+          t("installation_complete", { ns: "bottom_panel" }),
+          t("installation_complete_message", { ns: "bottom_panel" })
+        );
+      }),
+    ];
+
+    return () => {
+      listeners.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [
+    onSignIn,
+    updateLibrary,
+    clearUserDetails,
+    dispatch,
+    showErrorToast,
+    showSuccessToast,
+    showWarningToast,
+    t,
+  ]);
+
+  useEffect(() => {
+    const asyncScrollAndNotify = async () => {
+      if (contentRef.current) contentRef.current.scrollTop = 0;
+      await workwondersRef.current?.notifyUrlChange?.();
+    };
+    asyncScrollAndNotify();
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    new MutationObserver(() => {
+      const modal = document.body.querySelector("[data-hydra-dialog]");
+
+      dispatch(toggleDraggingDisabled(Boolean(modal)));
+    }).observe(document.body, {
+      attributes: false,
+      childList: true,
+    });
+  }, [dispatch, draggingDisabled]);
+
+  const loadAndApplyTheme = useCallback(async () => {
+    const allThemes = (await levelDBService.values("themes")) as {
+      isActive?: boolean;
+      code?: string;
+    }[];
+    const activeTheme = allThemes.find((theme) => theme.isActive);
+    if (activeTheme?.code) {
+      injectCustomCss(activeTheme.code);
+    } else {
+      removeCustomCss();
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAndApplyTheme();
+  }, [loadAndApplyTheme]);
+
+  useEffect(() => {
+    const unsubscribe = window.electron.onCustomThemeUpdated(() => {
+      loadAndApplyTheme();
+    });
+
+    return () => unsubscribe();
+  }, [loadAndApplyTheme]);
+
+  useEffect(() => {
+    const unsubscribe = globalThis.electron.onNavigate((path) => {
+      navigate(path);
+    });
+
+    return () => unsubscribe();
+  }, [navigate]);
+
+  useEffect(() => {
+    const unsubscribe = globalThis.electron.onOpenAddFriendModal(() => {
+      setShowAddFriendModal(true);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = globalThis.electron.onShowToast((toast) => {
+      dispatch(showToast(toast));
+    });
+
+    return () => unsubscribe();
+  }, [dispatch]);
+
+  const playAudio = useCallback(async () => {
+    const soundUrl = await getAchievementSoundUrl();
+    const volume = await getAchievementSoundVolume();
+    const audio = new Audio(soundUrl);
+    audio.volume = volume;
+    audio.play();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = window.electron.onAchievementUnlocked(
+      (suppressSound) => {
+        if (!suppressSound) playAudio();
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [playAudio]);
+
+  // Sent here when the chat window is closed or still loading.
+  useEffect(() => {
+    return window.electron.onChatMessageSound(() => {
+      void playMessageSound();
+    });
+  }, []);
+
+  const handleToastClose = useCallback(() => {
+    dispatch(closeToast());
+  }, [dispatch]);
+
+  const [isWindowMaximized, setIsWindowMaximized] = useState(false);
+
+  useEffect(() => {
+    if (
+      window.electron.platform !== "linux" ||
+      window.electron.hasNativeWindowDecorations
+    ) {
+      return;
+    }
+
+    if (window.electron.isWayland) {
+      document.body.classList.add("window-rounded");
+    }
+
+    let cancelled = false;
+
+    const applyMaximizeState = (isMaximized: boolean) => {
+      if (cancelled) return;
+      setIsWindowMaximized(isMaximized);
+      document.body.classList.toggle("window-maximized", isMaximized);
+    };
+
+    window.electron.isMainWindowMaximized().then(applyMaximizeState);
+    const unsubscribe =
+      window.electron.onWindowMaximizeChange(applyMaximizeState);
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+      document.body.classList.remove("window-rounded");
+      document.body.classList.remove("window-maximized");
+    };
+  }, []);
+
+  return (
+    <>
+      <AppTitleBar
+        hasActiveSubscription={hasActiveSubscription}
+        version={version}
+        isWindowMaximized={isWindowMaximized}
+      />
+
+      <Toast
+        visible={toast.visible}
+        title={toast.title}
+        message={toast.message}
+        type={toast.type}
+        onClose={handleToastClose}
+        duration={toast.duration}
+      />
+
+      <LevelUpModal />
+
+      <CloudSubscriptionModal
+        visible={isHydraCloudModalVisible}
+        onClose={hideHydraCloudModal}
+        feature={hydraCloudFeature || undefined}
+      />
+
+      <CloudGiftNotificationModal />
+
+      <LeaderboardNotificationLayer />
+
+      <ArchiveDeletionModal
+        visible={showArchiveDeletionModal}
+        archivePaths={archivePaths}
+        onClose={() => setShowArchiveDeletionModal(false)}
+      />
+
+      <AddFriendModal
+        visible={showAddFriendModal}
+        onClose={() => setShowAddFriendModal(false)}
+      />
+
+      <ClassicsScanModal />
+      <RetroArchScanModal />
+
+      <ScanGamesProvider>
+        <main>
+          <Sidebar />
+
+          <article className="container">
+            <AutoUpdateSubHeader />
+
+            <section
+              ref={contentRef}
+              id="scrollableDiv"
+              className="container__content"
+            >
+              <Outlet />
+            </section>
+          </article>
+        </main>
+      </ScanGamesProvider>
+    </>
+  );
+}

@@ -1,0 +1,145 @@
+@use "./scss/globals.scss";
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  background-color: globals.$dark-background-color;
+}
+
+::-webkit-scrollbar-track {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
+html,
+body,
+#root,
+main {
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+  user-select: none;
+  font-family:
+    Noto Sans,
+    sans-serif;
+  font-size: globals.$body-font-size;
+  color: globals.$body-color;
+  margin: 0;
+}
+
+body.window-rounded {
+  background-color: transparent;
+
+  #root {
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  &.window-maximized #root {
+    border-radius: 0;
+  }
+}
+
+body.feedback-widget-hidden #workwonders-feedback-widget-trigger {
+  display: none;
+}
+
+button {
+  padding: 0;
+  background-color: transparent;
+  border: none;
+  font-family: inherit;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin: 0;
+}
+
+p {
+  line-height: 20px;
+}
+
+#root,
+main {
+  display: flex;
+}
+
+#root {
+  flex-direction: column;
+}
+
+main {
+  overflow: hidden;
+}
+
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+label {
+  font-size: globals.$body-font-size;
+}
+
+img {
+  -webkit-user-drag: none;
+}
+
+progress[value] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.container {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  container-name: globals.$app-container;
+  container-type: inline-size;
+
+  &__content {
+    overflow-y: auto;
+    // Keep the scrollbar's space reserved. Otherwise the whole page narrows
+    // and reflows the moment loaded content first overflows.
+    scrollbar-gutter: stable;
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    height: 100%;
+    background: linear-gradient(
+      0deg,
+      globals.$dark-background-color 50%,
+      globals.$background-color 100%
+    );
+  }
+}
+
+.woot-widget-bubble,
+.woot--bubble-holder,
+.woot-widget-holder,
+#cw-widget-holder {
+  bottom: 56px !important;
+}

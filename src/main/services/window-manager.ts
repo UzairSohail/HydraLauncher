@@ -1,0 +1,1706 @@
+import { is } from "@electron-toolkit/utils";
+import { isStaging } from "@main/constants";
+import { db, gamesSublevel, levelKeys } from "@main/level";
+import icon from "@resources/icon.png?asset";
+import trayIconDark from "@resources/tray-icon-dark.png?asset";
+import trayIcon from "@resources/tray-icon.png?asset";
+import {
+  AUTH_WINDOW_CONTENT_HEIGHT,
+  AUTH_WINDOW_CONTENT_WIDTH,
+  AuthPage,
+  CUSTOM_WINDOW_BORDER_WIDTH,
+  CUSTOM_WINDOW_TITLE_BAR_HEIGHT,
+  MAIN_WINDOW_TITLE_BAR_HEIGHT,
+  NATIVE_WINDOW_DECORATIONS_ARGUMENT,
+} from "@shared";
+import type {
+  AchievementCustomNotificationPosition,
+  AchievementNotificationInfo,
+  ChatWindowState,
+  PendingChatFriend,
+  ScreenState,
+  SocialWindowKind,
+  SocialWindowsBounds,
+  SocialWindowsSession,
+  UserFriend,
+  UserPreferences,
+} from "@types";
+import {
+  BrowserWindow,
+  Menu,
+  MenuItem,
+  MenuItemConstructorOptions,
+  Tray,
+  WebContentsView,
+  app,
+  nativeImage,
+  nativeTheme,
+  screen,
+  shell,
+} from "electron";
+import { t } from "i18next";
+import { orderBy } from "lodash-es";
+import path from "node:path";
+import UserAgent from "user-agents";
+import { HydraApi } from "./hydra-api";
+import { logger } from "./logger";
+import {
+  addSteamGridDbCacheControl,
+  isSteamGridDbArtworkRequest,
+} from "./steam-grid-db-cache";
+import { getRetroAchievementsConnectionWindowLayout } from "./retroachievements-connection-window-layout";
+import { resolveSocialWindowBounds } from "./social-window-bounds";
+import {
+  getTopSocialWindow,
+  orderChatFriends,
+} from "./social-windows-restore-plan";
+
+const isLinuxWayland =
+  process.platform === "linux" &&
+  (process.env.XDG_SESSION_TYPE === "wayland" ||
+    Boolean(process.env.WAYLAND_DISPLAY));
+
+const EMPTY_CHAT_WINDOW_STATE: ChatWindowState = {
+  activeFriendId: null,
+  openFriendIds: [],
+};
+
+// Upper bound on how long a painted friends window stays hidden while its
+// renderer waits for the cached friends list. Past this it shows the skeleton.
+const FRIENDS_WINDOW_SHOW_FALLBACK_MS = 400;
+const FRIENDS_WINDOW_MIN_SIZE = { width: 260, height: 360 };
+const CHAT_WINDOW_MIN_SIZE = { width: 400, height: 420 };
+
+interface CreateMainWindowOptions {
+  forceBigPicture?: boolean;
+}
+
+export class WindowManager {
+  private static mainWindowInstance: Electron.BrowserWindow | null = null;
+  private static gameLauncherWindowInstance: Electron.BrowserWindow | null =
+    null;
+  private static bigPicture: Electron.BrowserWindow | null = null;
+  private static friendsWindow: Electron.BrowserWindow | null = null;
+  private static markFriendsWindowReady: (() => void) | null = null;
+  private static chatWindow: Electron.BrowserWindow | null = null;
+  // Held until the chat renderer drains them, so conversations requested while
+  // the window is still loading are not lost.
+  private static pendingChatFriends: PendingChatFriend[] = [];
+  private static chatWindowState: ChatWindowState = EMPTY_CHAT_WINDOW_STATE;
+  private static mainWindowShownResult: boolean | null = null;
+  private static mainWindowShownListeners: Array<(shown: boolean) => void> = [];
+  private static socialWindowsBounds: SocialWindowsBounds = {};
+  private static lastFocusedSocialWindow: SocialWindowKind | null = null;
+  private static readonly deferredSocialWindowShows = new Map<
+    SocialWindowKind,
+    () => void
+  >();
+  private static authWindow: Electron.BrowserWindow | null = null;
+  private static retroAchievementsConnectionWindow: Electron.BrowserWindow | null =
+    null;
+  private static deferredMainMaximize = false;
+
+  private static isArtworkRendererRequest(
+    webContentsId: number | undefined
+  ): boolean {
+    return [this.mainWindow, this.bigPicture].some(
+      (window) =>
+        window != null &&
+        !window.isDestroyed() &&
+        window.webContents.id === webContentsId
+    );
+  }
+
+  private static readonly editorWindows: Map<string, BrowserWindow> = new Map();
+
+  public static get mainWindow(): Electron.BrowserWindow | null {
+    return this.mainWindowInstance;
+  }
+
+  public static get bigPictureWindow(): Electron.BrowserWindow | null {
+    return this.bigPicture && !this.bigPicture.isDestroyed()
+      ? this.bigPicture
+      : null;
+  }
+
+  public static get gameLauncherWindow(): Electron.BrowserWindow | null {
+    return this.gameLauncherWindowInstance;
+  }
+
+  public static clearMainWindow(): void {
+    this.mainWindowInstance = null;
+  }
+
+  private static readonly DEFAULT_WINDOW_WIDTH = 1200;
+  private static readonly DEFAULT_WINDOW_HEIGHT = 860;
+  private static readonly MIN_WINDOW_WIDTH = 1024;
+  private static readonly MIN_WINDOW_HEIGHT = 600;
+
+  private static initialConfigInitializationMainWindow: Electron.BrowserWindowConstructorOptions =
+    {
+      width: WindowManager.DEFAULT_WINDOW_WIDTH,
+      height: WindowManager.DEFAULT_WINDOW_HEIGHT,
+      minWidth: WindowManager.MIN_WINDOW_WIDTH,
+      minHeight: WindowManager.MIN_WINDOW_HEIGHT,
+      icon,
+      // Centers the traffic lights in the title bar.
+      trafficLightPosition: { x: 16, y: 13 },
+      show: false,
+    };
+
+  private static hasNativeWindowDecorations = false;
+
+  public static async loadWindowDecorationsPreference() {
+    if (process.platform !== "linux") return;
+
+    const userPreferences = await db
+      .get<string, UserPreferences | null>(levelKeys.userPreferences, {
+        valueEncoding: "json",
+      })
+      .catch(() => null);
+
+    this.hasNativeWindowDecorations = Boolean(
+      userPreferences?.useNativeWindowDecorations
+    );
+  }
+
+  private static getMainWindowFrameOptions(): Electron.BrowserWindowConstructorOptions {
+    if (process.platform !== "linux") {
+      return {
+        backgroundColor: "#1c1c1c",
+        titleBarStyle: "hidden",
+        titleBarOverlay: {
+          symbolColor: "#DADBE1",
+          color: "#00000000",
+          height: MAIN_WINDOW_TITLE_BAR_HEIGHT,
+        },
+      };
+    }
+
+    if (this.hasNativeWindowDecorations) {
+      return { frame: true, backgroundColor: "#1c1c1c" };
+    }
+
+    return {
+      frame: false,
+      ...(isLinuxWayland
+        ? { transparent: true, backgroundColor: "#00000000" }
+        : { backgroundColor: "#1c1c1c" }),
+    };
+  }
+
+  private static getDecoratedWindowWebPreferences(): Electron.WebPreferences {
+    return {
+      preload: path.join(__dirname, "../preload/index.mjs"),
+      sandbox: false,
+      additionalArguments: this.hasNativeWindowDecorations
+        ? [NATIVE_WINDOW_DECORATIONS_ARGUMENT]
+        : [],
+    };
+  }
+
+  private static formatVersionNumber(version: string) {
+    return version.replaceAll(".", "-");
+  }
+
+  public static async loadWindowURL(window: BrowserWindow, hash: string = "") {
+    // HMR for renderer base on electron-vite cli.
+    // Load the remote URL for development or the local html file for production.
+    if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
+      window.loadURL(`${process.env["ELECTRON_RENDERER_URL"]}#/${hash}`);
+    } else if (import.meta.env.MAIN_VITE_LAUNCHER_SUBDOMAIN) {
+      // Try to load from remote URL in production
+      try {
+        await window.loadURL(
+          `https://release-v${this.formatVersionNumber(app.getVersion())}.${import.meta.env.MAIN_VITE_LAUNCHER_SUBDOMAIN}#/${hash}`
+        );
+      } catch (error) {
+        // Fall back to local file if remote URL fails
+        logger.error(
+          "Failed to load from MAIN_VITE_LAUNCHER_SUBDOMAIN, falling back to local file:",
+          error
+        );
+        window.loadFile(path.join(__dirname, "../renderer/index.html"), {
+          hash,
+        });
+      }
+    } else {
+      window.loadFile(path.join(__dirname, "../renderer/index.html"), {
+        hash,
+      });
+    }
+  }
+
+  private static async loadMainWindowURL(hash: string = "") {
+    if (this.mainWindow) {
+      await this.loadWindowURL(this.mainWindow, hash);
+    }
+  }
+
+  private static disableMainWindowWhileBigPictureIsOpen() {
+    const main = this.mainWindow;
+
+    if (!main || main.isDestroyed()) return;
+
+    main.setFocusable(false);
+    main.setIgnoreMouseEvents(true);
+    main.hide();
+  }
+
+  private static restoreMainWindowAfterBigPictureCloses() {
+    const main = this.mainWindow;
+
+    if (!main || main.isDestroyed()) return;
+
+    main.setIgnoreMouseEvents(false);
+    main.setFocusable(true);
+    main.setSkipTaskbar(false);
+  }
+
+  public static get appWindows() {
+    return [this.mainWindow, this.bigPicture];
+  }
+
+  public static sendToAppWindows(channel: string, ...args: unknown[]) {
+    const windows = [
+      this.mainWindow,
+      this.bigPicture,
+      this.friendsWindow,
+      this.chatWindow,
+    ];
+
+    for (const window of windows) {
+      if (!window || window.isDestroyed()) continue;
+      window.webContents.send(channel, ...args);
+    }
+  }
+
+  public static sendDownloadsUpdated() {
+    this.sendToAppWindows("on-downloads-updated");
+  }
+
+  private static async saveScreenConfig(configScreenWhenClosed: ScreenState) {
+    await db.put(levelKeys.screenState, configScreenWhenClosed, {
+      valueEncoding: "json",
+    });
+  }
+
+  private static async loadScreenConfig() {
+    const data = await db.get<string, ScreenState | undefined>(
+      levelKeys.screenState,
+      {
+        valueEncoding: "json",
+      }
+    );
+    return (
+      data ?? {
+        isMaximized: false,
+        height: this.DEFAULT_WINDOW_HEIGHT,
+        width: this.DEFAULT_WINDOW_WIDTH,
+      }
+    );
+  }
+
+  private static fitToWorkArea<
+    T extends { x?: number; y?: number; width?: number; height?: number },
+  >(bounds: T) {
+    const savedWidth = bounds.width ?? this.DEFAULT_WINDOW_WIDTH;
+    const savedHeight = bounds.height ?? this.DEFAULT_WINDOW_HEIGHT;
+    const savedX = bounds.x;
+    const savedY = bounds.y;
+    const hasSavedPosition = savedX !== undefined && savedY !== undefined;
+
+    const { workArea } = hasSavedPosition
+      ? screen.getDisplayMatching({
+          x: savedX,
+          y: savedY,
+          width: savedWidth,
+          height: savedHeight,
+        })
+      : screen.getPrimaryDisplay();
+
+    const minWidth = Math.min(this.MIN_WINDOW_WIDTH, workArea.width);
+    const minHeight = Math.min(this.MIN_WINDOW_HEIGHT, workArea.height);
+
+    const width = Math.max(minWidth, Math.min(savedWidth, workArea.width));
+    const height = Math.max(minHeight, Math.min(savedHeight, workArea.height));
+
+    if (!hasSavedPosition) {
+      return { ...bounds, minWidth, minHeight, width, height };
+    }
+
+    const maxX = Math.max(workArea.x, workArea.x + workArea.width - width);
+    const maxY = Math.max(workArea.y, workArea.y + workArea.height - height);
+
+    return {
+      ...bounds,
+      minWidth,
+      minHeight,
+      width,
+      height,
+      x: Math.min(Math.max(savedX, workArea.x), maxX),
+      y: Math.min(Math.max(savedY, workArea.y), maxY),
+    };
+  }
+
+  private static updateInitialConfig(
+    newConfig: Partial<Electron.BrowserWindowConstructorOptions>
+  ) {
+    this.initialConfigInitializationMainWindow = {
+      ...this.initialConfigInitializationMainWindow,
+      ...newConfig,
+    };
+  }
+
+  public static async createMainWindow(options?: CreateMainWindowOptions) {
+    if (this.mainWindow) return;
+
+    const userPreferences = await db
+      .get<string, UserPreferences | null>(levelKeys.userPreferences, {
+        valueEncoding: "json",
+      })
+      .catch(() => null);
+
+    const { isMaximized = false, ...configWithoutMaximized } =
+      await this.loadScreenConfig();
+
+    this.updateInitialConfig(this.fitToWorkArea(configWithoutMaximized));
+
+    const mainWindow = new BrowserWindow({
+      ...this.initialConfigInitializationMainWindow,
+      ...this.getMainWindowFrameOptions(),
+      webPreferences: this.getDecoratedWindowWebPreferences(),
+    });
+    this.mainWindowInstance = mainWindow;
+
+    this.deferredMainMaximize = false;
+
+    const emitMaximizeState = () => {
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(
+          "on-window-maximize-change",
+          mainWindow.isMaximized()
+        );
+      }
+    };
+    mainWindow.on("maximize", emitMaximizeState);
+    mainWindow.on("unmaximize", emitMaximizeState);
+
+    const shouldLaunchInBigPicture =
+      options?.forceBigPicture || Boolean(userPreferences?.launchInBigPicture);
+
+    if (shouldLaunchInBigPicture) {
+      mainWindow.setOpacity(0);
+      mainWindow.setSkipTaskbar(true);
+      if (isMaximized) {
+        this.deferredMainMaximize = true;
+      }
+    } else if (isMaximized) {
+      mainWindow.maximize();
+    }
+
+    mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
+      (details, callback) => {
+        if (
+          !this.isArtworkRendererRequest(details.webContentsId) ||
+          details.url.includes("chatwoot")
+        ) {
+          return callback(details);
+        }
+
+        if (details.url.includes("workwonders")) {
+          return callback({
+            ...details,
+            requestHeaders: {
+              Origin: "https://workwonders.app",
+              ...details.requestHeaders,
+            },
+          });
+        }
+
+        const userAgent = new UserAgent();
+
+        callback({
+          requestHeaders: {
+            ...details.requestHeaders,
+            "user-agent": userAgent.toString(),
+          },
+        });
+      }
+    );
+
+    mainWindow.webContents.session.webRequest.onHeadersReceived(
+      (details, callback) => {
+        const isArtworkRendererRequest = this.isArtworkRendererRequest(
+          details.webContentsId
+        );
+        const responseHeaders =
+          isArtworkRendererRequest && isSteamGridDbArtworkRequest(details)
+            ? addSteamGridDbCacheControl(details.responseHeaders)
+            : details.responseHeaders;
+
+        if (
+          !isArtworkRendererRequest ||
+          details.url.includes("featurebase") ||
+          details.url.includes("chatwoot") ||
+          details.url.includes("workwonders")
+        ) {
+          return callback({ ...details, responseHeaders });
+        }
+
+        const headers = {
+          "access-control-allow-origin": ["*"],
+          "access-control-allow-methods": ["GET, POST, PUT, DELETE, OPTIONS"],
+          "access-control-expose-headers": ["ETag"],
+          "access-control-allow-headers": [
+            "Content-Type, Authorization, X-Requested-With, If-None-Match",
+          ],
+        };
+        if (details.method === "OPTIONS") {
+          return callback({
+            cancel: false,
+            responseHeaders: {
+              ...responseHeaders,
+              ...headers,
+            },
+            statusLine: "HTTP/1.1 200 OK",
+          });
+        }
+
+        return callback({
+          responseHeaders: {
+            ...responseHeaders,
+            ...headers,
+          },
+        });
+      }
+    );
+
+    const initialHash = userPreferences?.launchToLibraryPage ? "library" : "";
+
+    this.loadMainWindowURL(initialHash);
+    mainWindow.removeMenu();
+
+    mainWindow.on("ready-to-show", () => {
+      if (!app.isPackaged || isStaging)
+        WindowManager.mainWindow?.webContents.openDevTools();
+      if (shouldLaunchInBigPicture) {
+        void WindowManager.openBigPictureWindow();
+        WindowManager.notifyMainWindowShown(false);
+      } else {
+        WindowManager.mainWindow?.show();
+        WindowManager.notifyMainWindowShown(true);
+      }
+    });
+
+    mainWindow.on("close", async () => {
+      this.mainWindowInstance = null;
+
+      const userPreferences = await db.get<string, UserPreferences>(
+        levelKeys.userPreferences,
+        {
+          valueEncoding: "json",
+        }
+      );
+
+      mainWindow.setProgressBar(-1);
+
+      const lastBounds = mainWindow.getBounds();
+      const isMaximized = mainWindow.isMaximized() ?? false;
+      const screenConfig = isMaximized
+        ? {
+            x: undefined,
+            y: undefined,
+            height:
+              this.initialConfigInitializationMainWindow.height ??
+              this.DEFAULT_WINDOW_HEIGHT,
+            width:
+              this.initialConfigInitializationMainWindow.width ??
+              this.DEFAULT_WINDOW_WIDTH,
+            isMaximized: true,
+          }
+        : { ...lastBounds, isMaximized };
+
+      await this.saveScreenConfig(screenConfig);
+
+      if (userPreferences?.preferQuitInsteadOfHiding) {
+        app.quit();
+      }
+    });
+
+    mainWindow.webContents.setWindowOpenHandler((handler) => {
+      shell.openExternal(handler.url);
+      return { action: "deny" };
+    });
+  }
+
+  public static isBigPictureSender(sender: Electron.WebContents) {
+    return (
+      this.bigPicture !== null &&
+      !this.bigPicture.isDestroyed() &&
+      this.bigPicture.webContents === sender
+    );
+  }
+
+  public static async openBigPictureWindow() {
+    if (this.bigPicture) {
+      this.bigPicture.focus();
+      return;
+    }
+
+    const userPreferences = await db
+      .get<string, UserPreferences | null>(levelKeys.userPreferences, {
+        valueEncoding: "json",
+      })
+      .catch(() => null);
+
+    const mainWindow = this.mainWindow;
+    const targetDisplay =
+      mainWindow && !mainWindow.isDestroyed()
+        ? screen.getDisplayMatching(mainWindow.getBounds())
+        : screen.getPrimaryDisplay();
+    const targetBounds = targetDisplay.bounds;
+
+    this.bigPicture = new BrowserWindow({
+      x: targetBounds.x,
+      y: targetBounds.y,
+      width: targetBounds.width,
+      height: targetBounds.height,
+      backgroundColor: "#0a0a0a",
+      icon,
+      frame: false,
+      show: false,
+      webPreferences: {
+        preload: path.join(__dirname, "../preload/index.mjs"),
+        sandbox: false,
+      },
+    });
+
+    this.bigPicture.removeMenu();
+
+    if (!app.isPackaged || isStaging) {
+      this.bigPicture.webContents.openDevTools();
+    }
+
+    const bigPictureInitialHash =
+      (userPreferences?.bigPictureLaunchToLibraryPage ??
+      userPreferences?.launchToLibraryPage)
+        ? "big-picture/library"
+        : "big-picture";
+
+    this.loadWindowURL(this.bigPicture, bigPictureInitialHash);
+
+    this.bigPicture.once("ready-to-show", () => {
+      const main = this.mainWindow;
+      if (main && !main.isDestroyed()) {
+        main.setOpacity(1);
+        this.disableMainWindowWhileBigPictureIsOpen();
+      }
+      this.bigPicture?.show();
+      this.bigPicture?.setFullScreen(true);
+      this.bigPicture?.focus();
+    });
+
+    this.bigPicture.on("closed", () => {
+      this.bigPicture = null;
+      const main = this.mainWindow;
+      if (main && !main.isDestroyed()) {
+        this.restoreMainWindowAfterBigPictureCloses();
+        if (WindowManager.deferredMainMaximize) {
+          main.maximize();
+          WindowManager.deferredMainMaximize = false;
+        }
+        main.show();
+        main.focus();
+      }
+    });
+  }
+
+  public static openFriendsWindow({ deferShow = false } = {}): Promise<void> {
+    if (this.friendsWindow) {
+      this.showDeferredSocialWindow("friends");
+      if (this.friendsWindow.isMinimized()) {
+        this.friendsWindow.restore();
+      }
+      this.friendsWindow.focus();
+      return Promise.resolve();
+    }
+
+    const friendsWindow = new BrowserWindow({
+      width: 420,
+      height: 780,
+      ...this.getSavedSocialWindowBounds("friends", FRIENDS_WINDOW_MIN_SIZE),
+      minWidth: FRIENDS_WINDOW_MIN_SIZE.width,
+      minHeight: FRIENDS_WINDOW_MIN_SIZE.height,
+      maximizable: false,
+      backgroundColor: "#1c1c1c",
+      frame: this.hasNativeWindowDecorations,
+      icon,
+      webPreferences: this.getDecoratedWindowWebPreferences(),
+      show: false,
+    });
+
+    this.friendsWindow = friendsWindow;
+
+    friendsWindow.removeMenu();
+
+    void this.loadWindowURL(friendsWindow, "friends-window");
+
+    // Show only once the renderer has painted its friends list (cached data or
+    // the skeleton), not on its first paint, so the window never opens on an
+    // empty list. The fallback covers a renderer that never reports in.
+    let isPainted = false;
+    let isRendererReady = false;
+    let isShowable = false;
+    let isShown = false;
+    let fallbackTimeout: NodeJS.Timeout | null = null;
+    let resolveShowable: () => void = () => {};
+    const showable = new Promise<void>((resolve) => {
+      resolveShowable = resolve;
+    });
+
+    const show = () => {
+      if (isShown || friendsWindow.isDestroyed()) return;
+      isShown = true;
+
+      friendsWindow.show();
+      if (!app.isPackaged || isStaging) {
+        friendsWindow.webContents.openDevTools({
+          mode: "detach",
+          activate: false,
+        });
+      }
+    };
+
+    const markShowable = () => {
+      if (isShowable) return;
+      isShowable = true;
+      if (fallbackTimeout) clearTimeout(fallbackTimeout);
+
+      if (deferShow) this.deferredSocialWindowShows.set("friends", show);
+      else show();
+      resolveShowable();
+    };
+
+    this.markFriendsWindowReady = () => {
+      isRendererReady = true;
+      if (isPainted) markShowable();
+    };
+
+    friendsWindow.once("ready-to-show", () => {
+      isPainted = true;
+
+      if (isRendererReady) {
+        markShowable();
+      } else {
+        fallbackTimeout = setTimeout(
+          markShowable,
+          FRIENDS_WINDOW_SHOW_FALLBACK_MS
+        );
+      }
+    });
+
+    friendsWindow.on("focus", () => {
+      this.lastFocusedSocialWindow = "friends";
+    });
+
+    friendsWindow.on("close", () => {
+      this.rememberSocialWindowBounds("friends", friendsWindow);
+    });
+
+    friendsWindow.on("closed", () => {
+      if (fallbackTimeout) clearTimeout(fallbackTimeout);
+      resolveShowable();
+      if (this.friendsWindow !== friendsWindow) return;
+
+      this.friendsWindow = null;
+      this.markFriendsWindowReady = null;
+      this.deferredSocialWindowShows.delete("friends");
+    });
+
+    return showable;
+  }
+
+  public static handleFriendsWindowReady(sender: Electron.WebContents) {
+    if (this.friendsWindow?.webContents !== sender) return;
+    this.markFriendsWindowReady?.();
+  }
+
+  public static minimizeFriendsWindow() {
+    if (this.friendsWindow && !this.friendsWindow.isDestroyed()) {
+      this.friendsWindow.minimize();
+    }
+  }
+
+  public static closeFriendsWindow() {
+    if (this.friendsWindow && !this.friendsWindow.isDestroyed()) {
+      this.friendsWindow.close();
+    }
+    this.friendsWindow = null;
+    this.markFriendsWindowReady = null;
+  }
+
+  // With activate false the window opens in the background and flashes its
+  // taskbar button instead, so a message never takes focus from a game or
+  // whatever the user is typing in.
+  public static openChatWindow(
+    friend: UserFriend,
+    {
+      activate = true,
+      isBackground = !activate,
+      flash = !activate,
+      deferShow = false,
+    } = {}
+  ): Promise<void> {
+    this.pendingChatFriends.push({ friend, isBackground });
+
+    if (this.chatWindow && !this.chatWindow.isDestroyed()) {
+      if (activate) {
+        this.showDeferredSocialWindow("chat");
+        if (this.chatWindow.isMinimized()) {
+          this.chatWindow.restore();
+        }
+        this.chatWindow.focus();
+      }
+      this.chatWindow.webContents.send("on-chat-friends-pending");
+      return Promise.resolve();
+    }
+
+    const chatWindow = new BrowserWindow({
+      width: 560,
+      height: 560,
+      ...this.getSavedSocialWindowBounds("chat", CHAT_WINDOW_MIN_SIZE),
+      minWidth: CHAT_WINDOW_MIN_SIZE.width,
+      minHeight: CHAT_WINDOW_MIN_SIZE.height,
+      maximizable: false,
+      fullscreenable: false,
+      backgroundColor: "#1c1c1c",
+      frame: this.hasNativeWindowDecorations,
+      icon,
+      webPreferences: this.getDecoratedWindowWebPreferences(),
+      show: false,
+    });
+    this.chatWindow = chatWindow;
+
+    this.chatWindow.removeMenu();
+
+    // Message links open in the browser after the renderer's prompt; nothing
+    // may load a site in this window or pop one up from it.
+    this.chatWindow.webContents.setWindowOpenHandler(() => ({
+      action: "deny",
+    }));
+    this.chatWindow.webContents.on("will-navigate", (event) => {
+      event.preventDefault();
+    });
+
+    void this.loadWindowURL(this.chatWindow, "chat-window");
+
+    const show = () => {
+      if (chatWindow.isDestroyed()) return;
+
+      if (activate) {
+        chatWindow.show();
+      } else {
+        chatWindow.showInactive();
+        if (flash) chatWindow.flashFrame(true);
+      }
+      if (!app.isPackaged || isStaging) {
+        // Detached: docked devtools would squeeze the small window. Opening
+        // them focuses the window even with activate false, so a window
+        // opened in the background waits until the user focuses it.
+        const openDevTools = () =>
+          this.chatWindow?.webContents.openDevTools({
+            mode: "detach",
+            activate,
+          });
+
+        if (activate) openDevTools();
+        else this.chatWindow?.once("focus", openDevTools);
+      }
+    };
+
+    const showable = new Promise<void>((resolve) => {
+      chatWindow.once("ready-to-show", () => {
+        if (deferShow) this.deferredSocialWindowShows.set("chat", show);
+        else show();
+        resolve();
+      });
+      chatWindow.once("closed", () => resolve());
+    });
+
+    this.chatWindow.on("focus", () => {
+      this.chatWindow?.flashFrame(false);
+      this.lastFocusedSocialWindow = "chat";
+    });
+
+    this.chatWindow.on("close", () => {
+      this.rememberSocialWindowBounds("chat", chatWindow);
+    });
+
+    this.chatWindow.on("closed", () => {
+      if (this.chatWindow !== chatWindow) return;
+
+      this.chatWindow = null;
+      this.pendingChatFriends = [];
+      this.chatWindowState = EMPTY_CHAT_WINDOW_STATE;
+      this.deferredSocialWindowShows.delete("chat");
+    });
+
+    return showable;
+  }
+
+  // Draws attention to a message the user cannot see: a closed chat window
+  // opens in the background on the sender's conversation, an open one flashes
+  // and gets a background tab for a sender without one.
+  public static showIncomingChatMessage(friend: UserFriend) {
+    const chatWindow = this.chatWindow;
+
+    if (!chatWindow || chatWindow.isDestroyed()) {
+      // A window popping up over Big Picture would cover its fullscreen UI.
+      if (this.bigPicture && !this.bigPicture.isDestroyed()) return;
+
+      void this.openChatWindow(friend, { activate: false });
+      return;
+    }
+
+    if (!this.chatWindowState.openFriendIds.includes(friend.id)) {
+      this.pendingChatFriends.push({ friend, isBackground: true });
+      chatWindow.webContents.send("on-chat-friends-pending");
+    }
+
+    // A window still loading gets focus or a flash once shown (see
+    // openChatWindow).
+    if (chatWindow.isVisible() && !this.isChatWindowFocused()) {
+      chatWindow.flashFrame(true);
+    }
+  }
+
+  public static setChatWindowState(state: ChatWindowState) {
+    this.chatWindowState = state;
+  }
+
+  public static getSocialWindowsSession(): SocialWindowsSession {
+    const isChatWindowOpen = Boolean(
+      this.chatWindow && !this.chatWindow.isDestroyed()
+    );
+    const isFriendsWindowOpen = Boolean(
+      this.friendsWindow && !this.friendsWindow.isDestroyed()
+    );
+
+    return {
+      friendsWindowOpen: isFriendsWindowOpen,
+      // The sidebar reloads the rest from the API; with nothing selected, any
+      // remaining conversation still brings the window back.
+      chatFriends: isChatWindowOpen
+        ? orderChatFriends(
+            [
+              this.chatWindowState.activeFriendId ??
+                this.chatWindowState.openFriendIds[0],
+            ].filter((friendId): friendId is string => Boolean(friendId)),
+            this.chatWindowState.openFriends ?? []
+          )
+        : [],
+      activeChatFriendId: isChatWindowOpen
+        ? this.chatWindowState.activeFriendId
+        : null,
+      topWindow: getTopSocialWindow(
+        isFriendsWindowOpen,
+        isChatWindowOpen,
+        this.lastFocusedSocialWindow
+      ),
+    };
+  }
+
+  public static waitForMainWindowShown() {
+    if (this.mainWindowShownResult !== null) {
+      return Promise.resolve(this.mainWindowShownResult);
+    }
+
+    return new Promise<boolean>((resolve) => {
+      this.mainWindowShownListeners.push(resolve);
+    });
+  }
+
+  private static notifyMainWindowShown(shown: boolean) {
+    this.mainWindowShownResult = shown;
+    const listeners = this.mainWindowShownListeners;
+    this.mainWindowShownListeners = [];
+    for (const listener of listeners) listener(shown);
+  }
+
+  public static setSocialWindowsBounds(bounds: SocialWindowsBounds | null) {
+    this.socialWindowsBounds = bounds ?? {};
+  }
+
+  private static getSavedSocialWindowBounds(
+    kind: SocialWindowKind,
+    minimumSize: { width: number; height: number }
+  ) {
+    return (
+      resolveSocialWindowBounds(
+        this.socialWindowsBounds[kind],
+        screen.getAllDisplays().map((display) => display.workArea),
+        minimumSize
+      ) ?? {}
+    );
+  }
+
+  private static captureSocialWindowBounds(
+    kind: SocialWindowKind,
+    window: Electron.BrowserWindow | null
+  ) {
+    if (!window || window.isDestroyed()) return;
+
+    this.socialWindowsBounds = {
+      ...this.socialWindowsBounds,
+      [kind]: window.getNormalBounds(),
+    };
+  }
+
+  private static persistSocialWindowsBounds() {
+    return db
+      .put<
+        string,
+        SocialWindowsBounds
+      >(levelKeys.socialWindowsBounds, this.socialWindowsBounds, { valueEncoding: "json" })
+      .catch((error) => {
+        logger.error("Failed to save the window position", error);
+      });
+  }
+
+  private static rememberSocialWindowBounds(
+    kind: SocialWindowKind,
+    window: Electron.BrowserWindow
+  ) {
+    if (window.isDestroyed()) return;
+
+    this.captureSocialWindowBounds(kind, window);
+    void this.persistSocialWindowsBounds();
+  }
+
+  public static async saveOpenSocialWindowsBounds() {
+    if (!this.friendsWindow && !this.chatWindow) return;
+
+    this.captureSocialWindowBounds("friends", this.friendsWindow);
+    this.captureSocialWindowBounds("chat", this.chatWindow);
+    await this.persistSocialWindowsBounds();
+  }
+
+  public static showDeferredSocialWindow(kind: SocialWindowKind) {
+    const show = this.deferredSocialWindowShows.get(kind);
+    if (!show) return;
+
+    this.deferredSocialWindowShows.delete(kind);
+    show();
+  }
+
+  public static discardDeferredSocialWindows() {
+    if (this.deferredSocialWindowShows.has("friends")) {
+      this.closeFriendsWindow();
+    }
+    if (
+      this.deferredSocialWindowShows.has("chat") &&
+      this.chatWindow &&
+      !this.chatWindow.isDestroyed()
+    ) {
+      this.chatWindow.close();
+    }
+    this.deferredSocialWindowShows.clear();
+  }
+
+  public static isBigPictureOpen() {
+    return Boolean(this.bigPicture && !this.bigPicture.isDestroyed());
+  }
+
+  public static restoreChatWindow(
+    friends: UserFriend[],
+    activeFriendId: string | null,
+    { deferShow = false } = {}
+  ) {
+    const activeFriend =
+      friends.find((friend) => friend.id === activeFriendId) ?? friends[0];
+    if (!activeFriend) return Promise.resolve();
+
+    for (const friend of friends) {
+      this.pendingChatFriends.push({ friend, isBackground: false });
+    }
+
+    return this.openChatWindow(activeFriend, { deferShow });
+  }
+
+  public static isMainWindowFocused() {
+    const mainWindow = this.mainWindow;
+    return Boolean(
+      mainWindow &&
+        !mainWindow.isDestroyed() &&
+        mainWindow.isVisible() &&
+        !mainWindow.isMinimized() &&
+        mainWindow.isFocused()
+    );
+  }
+
+  public static isChatWindowFocused() {
+    const chatWindow = this.chatWindow;
+    return Boolean(
+      chatWindow &&
+        !chatWindow.isDestroyed() &&
+        chatWindow.isVisible() &&
+        !chatWindow.isMinimized() &&
+        chatWindow.isFocused()
+    );
+  }
+
+  public static isChatConversationVisible(friendId: string) {
+    return (
+      this.isChatWindowFocused() &&
+      this.chatWindowState.activeFriendId === friendId
+    );
+  }
+
+  public static isChatConversationOpenInFocusedWindow(friendId: string) {
+    return (
+      this.isChatWindowFocused() &&
+      this.chatWindowState.openFriendIds.includes(friendId)
+    );
+  }
+
+  /**
+   * Sends to one window that can handle it right now, the chat window before
+   * the main one. False when neither has finished loading.
+   */
+  public static sendToFirstLoadedWindow(channel: string, ...args: unknown[]) {
+    const window = [this.chatWindow, this.mainWindow].find(
+      (candidate) =>
+        candidate &&
+        !candidate.isDestroyed() &&
+        !candidate.webContents.isLoading()
+    );
+
+    window?.webContents.send(channel, ...args);
+    return Boolean(window);
+  }
+
+  public static sendToChatWindow(channel: string, ...args: unknown[]) {
+    if (this.chatWindow && !this.chatWindow.isDestroyed()) {
+      this.chatWindow.webContents.send(channel, ...args);
+    }
+  }
+
+  public static consumePendingChatFriends() {
+    const friends = this.pendingChatFriends;
+    this.pendingChatFriends = [];
+    return friends;
+  }
+
+  public static minimizeChatWindow() {
+    if (this.chatWindow && !this.chatWindow.isDestroyed()) {
+      this.chatWindow.minimize();
+    }
+  }
+
+  public static closeChatWindow() {
+    if (this.chatWindow && !this.chatWindow.isDestroyed()) {
+      this.chatWindow.close();
+    }
+    this.chatWindow = null;
+    this.pendingChatFriends = [];
+    this.chatWindowState = EMPTY_CHAT_WINDOW_STATE;
+  }
+
+  public static minimizeMainWindow() {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.minimize();
+    }
+  }
+
+  public static toggleMaximizeMainWindow() {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return;
+    if (this.mainWindow.isMaximized()) {
+      this.mainWindow.unmaximize();
+    } else {
+      this.mainWindow.maximize();
+    }
+  }
+
+  public static closeMainWindow() {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.close();
+    }
+  }
+
+  public static isMainWindowMaximized() {
+    if (!this.mainWindow || this.mainWindow.isDestroyed()) return false;
+    return this.mainWindow.isMaximized();
+  }
+
+  private static focusMainWindow() {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      if (this.mainWindow.isMinimized()) this.mainWindow.restore();
+      this.mainWindow.show();
+      this.mainWindow.focus();
+    } else {
+      this.createMainWindow();
+    }
+  }
+
+  public static focusMainWindowAndNavigate(path: string) {
+    this.focusMainWindow();
+    this.mainWindow?.webContents.send("on-navigate", path);
+  }
+
+  public static openAddFriendModalInMainWindow() {
+    this.focusMainWindow();
+    this.mainWindow?.webContents.send("on-open-add-friend-modal");
+  }
+
+  private static bindAuthNavigation(
+    contents: Electron.WebContents,
+    closeWindow: () => void
+  ) {
+    contents.on("will-navigate", (_event, url) => {
+      if (url.startsWith("hydralauncher://auth")) {
+        closeWindow();
+
+        HydraApi.handleExternalAuth(url);
+        return;
+      }
+
+      if (url.startsWith("hydralauncher://update-account")) {
+        closeWindow();
+
+        WindowManager.sendToAppWindows("on-account-updated");
+      }
+    });
+  }
+
+  public static openAuthWindow(page: AuthPage, searchParams: URLSearchParams) {
+    const parentWindow =
+      this.bigPicture && !this.bigPicture.isDestroyed()
+        ? this.bigPicture
+        : this.mainWindow;
+
+    if (!parentWindow || parentWindow.isDestroyed()) return;
+
+    const authUrl = `${import.meta.env.MAIN_VITE_AUTH_URL}${page}?${searchParams.toString()}`;
+
+    if (process.platform === "linux") {
+      this.openLinuxAuthWindow(parentWindow, authUrl);
+      return;
+    }
+
+    const authWindow = new BrowserWindow({
+      width: AUTH_WINDOW_CONTENT_WIDTH,
+      height: AUTH_WINDOW_CONTENT_HEIGHT,
+      backgroundColor: "#1c1c1c",
+      parent: parentWindow,
+      modal: true,
+      show: false,
+      maximizable: false,
+      resizable: false,
+      minimizable: false,
+      webPreferences: {
+        sandbox: false,
+        nodeIntegrationInSubFrames: true,
+      },
+    });
+
+    authWindow.removeMenu();
+
+    if (!app.isPackaged) authWindow.webContents.openDevTools();
+
+    authWindow.loadURL(authUrl);
+
+    authWindow.once("ready-to-show", () => {
+      authWindow.show();
+    });
+
+    authWindow.once("closed", () => {
+      if (!parentWindow.isDestroyed()) {
+        parentWindow.focus();
+      }
+    });
+
+    this.bindAuthNavigation(authWindow.webContents, () => authWindow.close());
+  }
+
+  private static openLinuxAuthWindow(
+    parentWindow: Electron.BrowserWindow,
+    authUrl: string
+  ) {
+    const authWindow = new BrowserWindow({
+      width: AUTH_WINDOW_CONTENT_WIDTH + CUSTOM_WINDOW_BORDER_WIDTH * 2,
+      height:
+        AUTH_WINDOW_CONTENT_HEIGHT +
+        CUSTOM_WINDOW_TITLE_BAR_HEIGHT +
+        CUSTOM_WINDOW_BORDER_WIDTH * 2,
+      parent: parentWindow,
+      modal: true,
+      show: false,
+      maximizable: false,
+      resizable: false,
+      frame: false,
+      icon,
+      backgroundColor: "#1c1c1c",
+      webPreferences: {
+        preload: path.join(__dirname, "../preload/index.mjs"),
+        sandbox: false,
+      },
+    });
+
+    this.authWindow = authWindow;
+
+    authWindow.removeMenu();
+
+    const authView = new WebContentsView({
+      webPreferences: {
+        sandbox: false,
+        nodeIntegrationInSubFrames: true,
+      },
+    });
+
+    authWindow.contentView.addChildView(authView);
+    authView.setBounds({
+      x: CUSTOM_WINDOW_BORDER_WIDTH,
+      y: CUSTOM_WINDOW_BORDER_WIDTH + CUSTOM_WINDOW_TITLE_BAR_HEIGHT,
+      width: AUTH_WINDOW_CONTENT_WIDTH,
+      height: AUTH_WINDOW_CONTENT_HEIGHT,
+    });
+
+    this.loadWindowURL(authWindow, "auth-window");
+    authView.webContents.loadURL(authUrl);
+
+    if (!app.isPackaged) authView.webContents.openDevTools();
+
+    authWindow.once("ready-to-show", () => {
+      authWindow.show();
+    });
+
+    authWindow.once("closed", () => {
+      this.authWindow = null;
+      if (!parentWindow.isDestroyed()) {
+        parentWindow.focus();
+      }
+    });
+
+    this.bindAuthNavigation(authView.webContents, () => {
+      if (!authWindow.isDestroyed()) authWindow.close();
+    });
+  }
+
+  public static minimizeAuthWindow() {
+    if (this.authWindow && !this.authWindow.isDestroyed()) {
+      this.authWindow.minimize();
+    }
+  }
+
+  public static closeAuthWindow() {
+    if (this.authWindow && !this.authWindow.isDestroyed()) {
+      this.authWindow.close();
+    }
+  }
+
+  public static openRetroAchievementsConnectionWindow() {
+    const existingWindow = this.retroAchievementsConnectionWindow;
+    if (existingWindow && !existingWindow.isDestroyed()) {
+      if (existingWindow.isMinimized()) existingWindow.restore();
+      existingWindow.focus();
+      return;
+    }
+
+    const parentWindow = this.mainWindow;
+    if (!parentWindow || parentWindow.isDestroyed()) return;
+
+    const layout = getRetroAchievementsConnectionWindowLayout(
+      process.platform,
+      this.hasNativeWindowDecorations
+    );
+    const connectionWindow = new BrowserWindow({
+      width: layout.width,
+      height: layout.height,
+      title: "Hydra",
+      backgroundColor: "#1c1c1c",
+      parent: parentWindow,
+      modal: true,
+      show: false,
+      maximizable: false,
+      resizable: false,
+      minimizable: layout.minimizable,
+      frame: layout.frame,
+      icon,
+      webPreferences: this.getDecoratedWindowWebPreferences(),
+    });
+
+    this.retroAchievementsConnectionWindow = connectionWindow;
+    connectionWindow.removeMenu();
+    void this.loadWindowURL(connectionWindow, "retroachievements-connection");
+
+    connectionWindow.once("ready-to-show", () => {
+      connectionWindow.show();
+      if (!app.isPackaged || isStaging) {
+        connectionWindow.webContents.openDevTools();
+      }
+    });
+
+    connectionWindow.once("closed", () => {
+      this.retroAchievementsConnectionWindow = null;
+      if (!parentWindow.isDestroyed()) parentWindow.focus();
+    });
+  }
+
+  public static minimizeRetroAchievementsConnectionWindow() {
+    const connectionWindow = this.retroAchievementsConnectionWindow;
+    if (connectionWindow && !connectionWindow.isDestroyed()) {
+      connectionWindow.minimize();
+    }
+  }
+
+  public static closeRetroAchievementsConnectionWindow() {
+    const connectionWindow = this.retroAchievementsConnectionWindow;
+    if (connectionWindow && !connectionWindow.isDestroyed()) {
+      connectionWindow.close();
+    }
+  }
+
+  public static completeRetroAchievementsConnectionWindow() {
+    this.sendToAppWindows("on-retroachievements-connected");
+    this.closeRetroAchievementsConnectionWindow();
+  }
+
+  public static sendAchievementToFocusedWindow(
+    position: AchievementCustomNotificationPosition,
+    achievements: AchievementNotificationInfo[]
+  ): boolean {
+    const candidates = [this.bigPicture, this.mainWindow];
+
+    for (const window of candidates) {
+      if (window && !window.isDestroyed() && window.isFocused()) {
+        window.webContents.send(
+          "on-achievement-unlocked-in-app",
+          position,
+          achievements
+        );
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  public static openEditorWindow(themeId: string) {
+    if (this.mainWindow) {
+      const existingWindow = this.editorWindows.get(themeId);
+      if (existingWindow) {
+        if (existingWindow.isMinimized()) {
+          existingWindow.restore();
+        }
+        existingWindow.focus();
+        return;
+      }
+
+      const editorWindow = new BrowserWindow({
+        width: 720,
+        height: 720,
+        minWidth: 600,
+        minHeight: 540,
+        backgroundColor: "#1c1c1c",
+        titleBarStyle: process.platform === "linux" ? "default" : "hidden",
+        icon,
+        trafficLightPosition: { x: 16, y: 16 },
+        titleBarOverlay: {
+          symbolColor: "#DADBE1",
+          color: "#151515",
+          height: 34,
+        },
+        webPreferences: {
+          preload: path.join(__dirname, "../preload/index.mjs"),
+          sandbox: false,
+        },
+        show: false,
+      });
+
+      this.editorWindows.set(themeId, editorWindow);
+
+      editorWindow.removeMenu();
+
+      this.loadWindowURL(editorWindow, `theme-editor?themeId=${themeId}`);
+
+      editorWindow.once("ready-to-show", () => {
+        editorWindow.show();
+        this.mainWindow?.webContents.openDevTools();
+        if (!app.isPackaged || isStaging) {
+          editorWindow.webContents.openDevTools();
+        }
+      });
+
+      editorWindow.webContents.on("before-input-event", (_event, input) => {
+        if (input.key === "F12") {
+          this.mainWindow?.webContents.toggleDevTools();
+        }
+      });
+
+      editorWindow.on("close", () => {
+        this.mainWindow?.webContents.closeDevTools();
+        this.editorWindows.delete(themeId);
+      });
+    }
+  }
+
+  public static closeEditorWindow(themeId?: string) {
+    if (themeId) {
+      const editorWindow = this.editorWindows.get(themeId);
+      if (editorWindow) {
+        editorWindow.close();
+      }
+    } else {
+      this.editorWindows.forEach((editorWindow) => {
+        editorWindow.close();
+      });
+    }
+  }
+
+  private static readonly GAME_LAUNCHER_WINDOW_WIDTH = 550;
+  private static readonly GAME_LAUNCHER_WINDOW_HEIGHT = 320;
+
+  public static async createGameLauncherWindow(shop: string, objectId: string) {
+    if (this.gameLauncherWindow) {
+      this.gameLauncherWindow.close();
+      this.gameLauncherWindowInstance = null;
+    }
+
+    const display = screen.getPrimaryDisplay();
+    const { width: displayWidth, height: displayHeight } = display.bounds;
+
+    const x = Math.round((displayWidth - this.GAME_LAUNCHER_WINDOW_WIDTH) / 2);
+    const y = Math.round(
+      (displayHeight - this.GAME_LAUNCHER_WINDOW_HEIGHT) / 2
+    );
+
+    const gameLauncherWindow = new BrowserWindow({
+      width: this.GAME_LAUNCHER_WINDOW_WIDTH,
+      height: this.GAME_LAUNCHER_WINDOW_HEIGHT,
+      x,
+      y,
+      resizable: false,
+      maximizable: false,
+      minimizable: false,
+      fullscreenable: false,
+      frame: false,
+      backgroundColor: "#1c1c1c",
+      icon,
+      skipTaskbar: false,
+      webPreferences: {
+        preload: path.join(__dirname, "../preload/index.mjs"),
+        sandbox: false,
+      },
+      show: false,
+    });
+    this.gameLauncherWindowInstance = gameLauncherWindow;
+
+    gameLauncherWindow.removeMenu();
+
+    this.loadWindowURL(
+      gameLauncherWindow,
+      `game-launcher?shop=${shop}&objectId=${objectId}`
+    );
+
+    gameLauncherWindow.on("closed", () => {
+      this.gameLauncherWindowInstance = null;
+    });
+
+    if (!app.isPackaged || isStaging) {
+      gameLauncherWindow.webContents.openDevTools();
+    }
+  }
+
+  public static showGameLauncherWindow() {
+    if (this.gameLauncherWindow && !this.gameLauncherWindow.isDestroyed()) {
+      this.gameLauncherWindow.show();
+    }
+  }
+
+  public static closeGameLauncherWindow() {
+    if (this.gameLauncherWindow) {
+      this.gameLauncherWindow.close();
+      this.gameLauncherWindowInstance = null;
+    }
+  }
+
+  public static openMainWindow() {
+    if (this.bigPicture && !this.bigPicture.isDestroyed()) {
+      this.bigPicture.focus();
+      return;
+    }
+
+    if (this.mainWindow) {
+      this.mainWindow.show();
+      if (this.mainWindow.isMinimized()) {
+        this.mainWindow.restore();
+      }
+      this.mainWindow.focus();
+    } else {
+      this.createMainWindow();
+    }
+  }
+
+  public static redirect(hash: string) {
+    if (!this.mainWindow) this.createMainWindow();
+    this.loadMainWindowURL(hash);
+
+    if (this.bigPicture && !this.bigPicture.isDestroyed()) {
+      return;
+    }
+
+    if (this.mainWindow?.isMinimized()) this.mainWindow.restore();
+    this.mainWindow?.focus();
+  }
+
+  public static redirectToMainWindow(hash: string) {
+    this.redirect(hash);
+
+    if (this.bigPicture && !this.bigPicture.isDestroyed()) {
+      this.bigPicture.close();
+      return;
+    }
+
+    this.openMainWindow();
+  }
+
+  public static redirectToGameWindow(hash: string) {
+    if (this.bigPicture && !this.bigPicture.isDestroyed()) {
+      this.bigPicture.webContents.send(
+        "on-navigate",
+        `/big-picture/${hash.replace(/^\/+/, "")}`
+      );
+      this.bigPicture.show();
+      this.bigPicture.focus();
+      return;
+    }
+
+    this.redirectToMainWindow(hash);
+  }
+
+  public static async createSystemTray(language: string) {
+    let tray: Tray;
+
+    if (process.platform === "darwin") {
+      const macIcon = nativeImage
+        .createFromPath(trayIcon)
+        .resize({ width: 24, height: 24 });
+      tray = new Tray(macIcon);
+    } else if (process.platform === "win32") {
+      const getWindowsTrayIcon = () =>
+        nativeTheme.shouldUseDarkColorsForSystemIntegratedUI
+          ? trayIcon
+          : trayIconDark;
+
+      tray = new Tray(getWindowsTrayIcon());
+
+      nativeTheme.on("updated", () => {
+        tray.setImage(getWindowsTrayIcon());
+      });
+    } else {
+      tray = new Tray(trayIcon);
+    }
+
+    const updateSystemTray = async () => {
+      const games = await gamesSublevel
+        .values()
+        .all()
+        .then((games) => {
+          const filteredGames = games.filter(
+            (game) =>
+              !game.isDeleted && game.executablePath && game.lastTimePlayed
+          );
+
+          const sortedGames = orderBy(filteredGames, "lastTimePlayed", "desc");
+
+          return sortedGames.slice(0, 6);
+        });
+
+      const recentlyPlayedGames: Array<MenuItemConstructorOptions | MenuItem> =
+        games.map(({ title, executablePath }) => ({
+          label: title.length > 18 ? `${title.slice(0, 18)}…` : title,
+          type: "normal",
+          click: async () => {
+            if (!executablePath) return;
+
+            shell.openPath(executablePath);
+          },
+        }));
+
+      const contextMenu = Menu.buildFromTemplate([
+        {
+          label: t("open", {
+            ns: "system_tray",
+            lng: language,
+          }),
+          type: "normal",
+          click: () => {
+            if (this.mainWindow) {
+              this.mainWindow.show();
+            } else {
+              this.createMainWindow();
+            }
+          },
+        },
+        {
+          type: "separator",
+        },
+        ...recentlyPlayedGames,
+        {
+          type: "separator",
+        },
+        {
+          label: t("quit", {
+            ns: "system_tray",
+            lng: language,
+          }),
+          type: "normal",
+          click: () => app.quit(),
+        },
+      ]);
+
+      if (process.platform === "linux") {
+        tray.setContextMenu(contextMenu);
+      }
+
+      return contextMenu;
+    };
+
+    const showContextMenu = async () => {
+      const contextMenu = await updateSystemTray();
+      tray.popUpContextMenu(contextMenu);
+    };
+
+    tray.setToolTip("Hydra Launcher");
+
+    if (process.platform === "win32") {
+      await updateSystemTray();
+
+      tray.addListener("double-click", () => {
+        if (this.mainWindow) {
+          this.mainWindow.show();
+        } else {
+          this.createMainWindow();
+        }
+      });
+
+      tray.addListener("right-click", showContextMenu);
+    } else if (process.platform === "linux") {
+      await updateSystemTray();
+
+      tray.addListener("click", () => {
+        if (this.mainWindow) {
+          this.mainWindow.show();
+        } else {
+          this.createMainWindow();
+        }
+      });
+
+      tray.addListener("right-click", showContextMenu);
+    } else {
+      tray.addListener("click", showContextMenu);
+      tray.addListener("right-click", showContextMenu);
+    }
+  }
+}

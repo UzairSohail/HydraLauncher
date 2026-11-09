@@ -1,0 +1,72 @@
+@use "../../scss/globals.scss";
+
+.hero {
+  width: 100%;
+  height: 300px;
+  min-height: 250px;
+  border-radius: 0;
+  color: #dadbe1;
+  overflow: hidden;
+  box-shadow: 0px 0px 15px 0px #000000;
+  cursor: pointer;
+  border: solid 1px globals.$border-color;
+  z-index: 1;
+  flex-shrink: 0;
+
+  // The window is never narrower than 1024px, so only its height matters.
+  @media (min-height: 800px) {
+    height: 400px;
+    min-height: 400px;
+  }
+
+  &__media {
+    object-fit: cover;
+    object-position: center;
+    position: absolute;
+    z-index: -1;
+    width: 100%;
+    height: 100%;
+    transition: all ease 0.2s;
+    image-rendering: revert;
+  }
+  &:hover &__media {
+    transform: scale(1.02);
+  }
+
+  &__backdrop {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(0deg, rgba(0, 0, 0, 0.8) 25%, transparent 100%);
+    position: relative;
+    display: flex;
+    overflow: hidden;
+  }
+
+  &__description {
+    max-width: 700px;
+    color: globals.$muted-color;
+    text-align: left;
+    line-height: 20px;
+    margin-top: calc(globals.$spacing-unit * 2);
+  }
+
+  &__content {
+    width: 100%;
+    height: 100%;
+    padding: calc(globals.$spacing-unit * 4) calc(globals.$spacing-unit * 3);
+    gap: calc(globals.$spacing-unit * 2);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+
+  &__logo {
+    max-width: 100%;
+    height: auto;
+    width: 200px;
+
+    @media (min-height: 800px) {
+      width: 250px;
+    }
+  }
+}

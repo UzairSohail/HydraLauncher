@@ -1,0 +1,42 @@
+@use "../../scss/globals.scss";
+
+.library-category-filter {
+  &__container {
+    display: flex;
+    gap: 2px;
+    align-items: stretch;
+    height: 40px;
+    padding: 2px;
+    background-color: globals.$dark-background-color;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+  }
+
+  &__option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 calc(globals.$spacing-unit * 1.5);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: globals.$subtle-color;
+    font-size: globals.$hint-font-size;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease,
+      border-color 0.15s ease;
+
+    &:hover {
+      color: globals.$muted-color;
+    }
+
+    &--active {
+      background-color: rgba(255, 255, 255, 0.04);
+      border-color: globals.$border-color;
+      color: globals.$muted-color;
+    }
+  }
+}

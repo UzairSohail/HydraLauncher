@@ -1,0 +1,1175 @@
+import type { ScreenshotCommentsPolicy } from "./screenshot.types";
+import type { Cracker, DownloadSourceStatus, Downloader } from "@shared";
+import type { SteamAppDetails } from "./steam.types";
+import type {
+  AchievementCustomNotificationPosition,
+  Download,
+  Game,
+  CatalogueGameIdentity,
+  LibraryCatalogueMetadata,
+  Subscription,
+} from "./level.types";
+import type {
+  AchievementSet,
+  GameShop,
+  UnlockedAchievement,
+} from "./game.types";
+import type { ArtworkAssetType } from "./artwork.types";
+import type { GameContentWarning } from "./souvenir.types";
+import type { RecompilationSummary } from "./recompilation.types";
+
+export type FriendRequestAction = "ACCEPTED" | "REFUSED" | "CANCEL";
+export * from "./download-contract";
+
+export type HydraCloudFeature =
+  | "achievements"
+  | "backup"
+  | "achievements-points"
+  | "customization"
+  | "vikingfile";
+
+export interface DiskUsage {
+  free: number;
+  total: number;
+}
+
+export interface GameRepack {
+  id: string;
+  title: string;
+  fileSize: string | null;
+  uris: string[];
+  /** Mirrors split into parts. Each group lists one hoster's parts in order. */
+  uriGroups?: string[][];
+  unavailableUris: string[];
+  uploadDate: string | null;
+  downloadSourceId: string;
+  downloadSourceName: string;
+  createdAt: string;
+}
+
+export interface DownloadSource {
+  id: string;
+  name: string;
+  url: string;
+  status: DownloadSourceStatus;
+  downloadCount: number;
+  fingerprint?: string;
+  isRemote?: true;
+  createdAt: string;
+}
+
+export interface ProtonVersion {
+  name: string;
+  path: string;
+  source?: "steam" | "compatibility_tools" | "unknown";
+}
+
+export interface CatalogueImageVariants {
+  base: string;
+  widths: number[];
+  thumbHash: string | null;
+}
+
+/** Resized CDN copies keyed by the original image URL. */
+export type CatalogueImages = Record<string, CatalogueImageVariants>;
+
+export interface ShopAssets {
+  objectId: string;
+  shop: GameShop;
+  title: string;
+  iconUrl: string | null;
+  libraryHeroImageUrl: string | null;
+  libraryImageUrl: string | null;
+  logoImageUrl: string | null;
+  logoPosition: string | null;
+  coverImageUrl: string | null;
+  downloadSources: string[];
+  selectedArtworkTypes?: ArtworkAssetType[];
+  epicArtworkUpdatedAtByType?: Partial<
+    Record<"icon" | "portrait" | "landscape", number>
+  >;
+  images?: CatalogueImages;
+}
+
+export type ShopDetails = SteamAppDetails & {
+  objectId: string;
+  platform?: string;
+  skus?: string[];
+  retroAchievementsGameId?: number | null;
+  descriptionLanguage?: string;
+};
+
+export type ShopDetailsWithAssets = ShopDetails & {
+  assets: ShopAssets | null;
+};
+
+export interface TorrentFile {
+  index: number;
+  path: string;
+  length: number;
+}
+
+export interface TorrentFilesResponse {
+  infoHash: string;
+  name: string;
+  totalSize: number;
+  files: TorrentFile[];
+  archiveOnly?: boolean;
+}
+
+export type UserGame = LibraryCatalogueMetadata & {
+  objectId: string;
+  shop: GameShop;
+  title: string;
+  playTimeInSeconds: number;
+  lastTimePlayed: Date | null;
+  unlockedAchievementCount: number;
+  achievementCount: number;
+  achievementsPointsEarnedSum: number;
+  hasManuallyUpdatedPlaytime: boolean;
+  hasActiveSteamImport?: boolean;
+  hasActiveEpicImport?: boolean;
+  runtimeByPlatform?: { hydra?: number; steam?: number; epic?: number };
+  isFavorite: boolean;
+  isHiddenFromOthers?: boolean;
+  isConcealed?: boolean;
+  isPinned: boolean;
+  pinnedDate?: Date | null;
+  customLibraryImageUrl?: string | null;
+  customLibraryHeroImageUrl?: string | null;
+  customLogoImageUrl?: string | null;
+  customIconUrl?: string | null;
+} & ShopAssets;
+
+export interface UserLibraryResponse {
+  totalCount: number;
+  library: UserGame[];
+  pinnedGames: UserGame[];
+}
+
+export interface GameCollection {
+  id: string;
+  name: string;
+  gamesCount: number;
+}
+
+export interface GameRunning {
+  id: string;
+  title: string;
+  iconUrl: string | null;
+  customIconUrl?: string | null;
+  coverImageUrl?: string | null;
+  objectId: string;
+  shop: GameShop;
+  sessionDurationInMillis: number;
+  recompilationSlug?: string;
+}
+
+export interface Steam250Game {
+  title: string;
+  objectId: string;
+}
+
+export interface SteamGame {
+  id: number;
+  name: string;
+  clientIcon: string | null;
+}
+
+export type AppUpdaterEvent =
+  | { type: "update-available"; info: { version: string } }
+  | { type: "update-downloaded" };
+
+/* Events */
+export interface StartGameDownloadPayload {
+  objectId: string;
+  title: string;
+  shop: GameShop;
+  uri: string;
+  parts?: string[];
+  downloadPath: string;
+  downloader: Downloader;
+  automaticallyExtract: boolean;
+  automaticallyDeleteArchiveFiles: boolean;
+  fileSize?: string | null;
+  fileIndices?: number[];
+  selectedFilesSize?: number | null;
+}
+
+export interface UserFriend {
+  id: string;
+  displayName: string;
+  profileImageUrl: string | null;
+  backgroundImageUrl?: string | null;
+  currentGame:
+    | (ShopAssets & {
+        sessionDurationInSeconds: number;
+      })
+    | null;
+  isOnline?: boolean;
+  /* The Hydra team's account: it messages users, nobody messages it. */
+  isOfficial?: boolean;
+}
+
+export interface UserFriends {
+  totalFriends: number;
+  friends: UserFriend[];
+}
+
+export interface ProfileFriends {
+  totalFriends: number;
+  onlineFriends: number;
+  friends: UserFriend[];
+}
+
+// Cached in the main process so the friends window can paint real data on its
+// first frame instead of an empty list.
+export interface FriendsSnapshot {
+  friends: UserFriend[];
+  onlineFriends: number;
+  friendRequests: FriendRequest[];
+}
+
+export interface UserBlocks {
+  totalBlocks: number;
+  blocks: UserFriend[];
+}
+
+export interface FriendRequestSync {
+  friendRequestCount: number;
+}
+
+export interface FriendPresenceSync {
+  friendId: string;
+  isOnline: boolean;
+}
+
+export interface ChatReplyDto {
+  senderId: string;
+  /* Empty when `hidden` is true, or when the message is images only. */
+  body: string;
+  /* Removed by moderation. */
+  hidden?: boolean;
+  /* Images on the replied-to message. */
+  attachmentCount?: number;
+}
+
+export type ChatAttachmentContentType =
+  | "image/jpeg"
+  | "image/png"
+  | "image/gif";
+
+export interface ChatAttachmentDto {
+  id: string;
+  contentType: ChatAttachmentContentType;
+  /* Null while the image is still being checked. */
+  width: number | null;
+  height: number | null;
+  spoiler: boolean;
+  /* Signed for at least a day; null when moderation removed the message. */
+  url: string | null;
+}
+
+export interface ChatMessageDto {
+  seq: number;
+  senderId: string;
+  /* Empty when `hidden` is true, or when the message is images only. */
+  body: string;
+  /* Removed by moderation. Realtime messages leave it out. */
+  hidden?: boolean;
+  clientNonce: string;
+  createdAt: string;
+  /* Seq of the message this one replies to. */
+  replyToSeq?: number | null;
+  /* The replied-to message; null once it is past chat retention. */
+  replyTo?: ChatReplyDto | null;
+  /* Oldest first, at most one per user. Realtime messages leave it out. */
+  reactions?: ChatReactionDto[];
+  /* In the order they were sent. */
+  attachments?: ChatAttachmentDto[];
+}
+
+export type ChatPendingMessageStatus = "checking" | "blocked" | "failed";
+
+/* The user's own message with images, held until the images are checked. */
+export interface ChatPendingMessageDto {
+  clientNonce: string;
+  status: ChatPendingMessageStatus;
+  body: string;
+  replyToSeq: number | null;
+  createdAt: string;
+  attachments: ChatAttachmentDto[];
+}
+
+export interface ChatAttachmentReservation {
+  id: string;
+  uploadUrl: string;
+  expiresAt: string;
+}
+
+export interface ChatAttachmentUploadRequest {
+  friendId: string;
+  /* Chosen by the caller; progress events carry it back. */
+  uploadId: string;
+  contentType: ChatAttachmentContentType;
+  bytes: ArrayBuffer;
+}
+
+export interface ChatAttachmentUploadProgress {
+  uploadId: string;
+  loaded: number;
+  total: number;
+}
+
+export interface ChatReactionDto {
+  userId: string;
+  emoji: string;
+  updatedAt: string;
+}
+
+export interface ChatMessageReactionsDto {
+  seq: number;
+  reactions: ChatReactionDto[];
+}
+
+export interface ChatMessagesPage {
+  messages: ChatMessageDto[];
+  hasMore: boolean;
+  canSend: boolean;
+  lastReadSeq: number;
+  unreadCount: number;
+  /* The user's own held messages, oldest first. Empty for paged requests. */
+  pendingMessages?: ChatPendingMessageDto[];
+}
+
+/* One row of GET /profile/chats: a conversation with at least one message. */
+export interface ChatConversationDto {
+  friendId: string;
+  /* As in the friends list, whatever the friend's visibility or relationship. */
+  friend: {
+    id: string;
+    displayName: string;
+    profileImageUrl: string | null;
+    isOfficial?: boolean;
+  };
+  lastMessage: ChatReplyDto & {
+    seq: number;
+    createdAt: string;
+  };
+  lastMessageAt: string;
+  lastReadSeq: number;
+  unreadCount: number;
+  canSend: boolean;
+}
+
+export interface ChatConversationsPage {
+  conversations: ChatConversationDto[];
+  /* Null on the last page. */
+  nextCursor: string | null;
+}
+
+export interface ChatUnreadSummary {
+  totalUnread: number;
+  conversations: {
+    friendId: string;
+    unreadCount: number;
+    lastMessageAt: string;
+  }[];
+}
+
+/* Unread message counts keyed by friend id, as kept by the main process. */
+export interface ChatUnreadState {
+  totalUnread: number;
+  byFriend: Record<string, number>;
+  lastMessageAtByFriend?: Record<string, string>;
+  /* Bumped by each official messages poll, so an open chat window refetches. */
+  officialRevision?: number;
+}
+
+export interface OfficialMessageDto {
+  id: string;
+  seq: number;
+  senderId: string;
+  body: string;
+  locale: string;
+  attachments: ChatAttachmentDto[];
+  createdAt: string;
+  isUnread: boolean;
+}
+
+export interface OfficialMessagesPage {
+  sender: {
+    id: string;
+    displayName: string;
+    /* Null: the launcher shows its own logo. */
+    profileImageUrl: string | null;
+    isOfficial: boolean;
+  };
+  messages: OfficialMessageDto[];
+  unreadCount: number;
+  hasMoreBefore: boolean;
+  nextPollSeconds: number;
+}
+
+export interface OfficialUnreadSummary {
+  unreadCount: number;
+  latestSeq: number | null;
+  nextPollSeconds: number;
+}
+
+/* friendId is always the other side of the conversation, even for messages
+   the current user sent from another window or device. */
+export interface ChatMessageSync {
+  friendId: string;
+  message: ChatMessageDto;
+}
+
+export interface ChatTypingSync {
+  friendId: string;
+}
+
+/* A reaction set (or removed, with a null emoji) on the message with `seq`. */
+export interface ChatReactionSync {
+  friendId: string;
+  seq: number;
+  fromMe: boolean;
+  emoji: string | null;
+  updatedAt: string;
+}
+
+/* The message with `seq` was removed by moderation, or put back. */
+export interface ChatMessageVisibilitySync {
+  friendId: string;
+  seq: number;
+  hidden: boolean;
+}
+
+/* The user's message with images was not delivered. */
+export interface ChatMessageRejectedSync {
+  friendId: string;
+  clientNonce: string;
+  reason: "blocked" | "failed";
+}
+
+export interface ChatWindowState {
+  activeFriendId: string | null;
+  openFriendIds: string[];
+  openFriends?: UserFriend[];
+}
+
+export type SocialWindowKind = "friends" | "chat";
+
+export interface SocialWindowsSession {
+  friendsWindowOpen: boolean;
+  chatFriends: UserFriend[];
+  activeChatFriendId: string | null;
+  topWindow: SocialWindowKind | null;
+}
+
+export interface SocialWindowBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export type SocialWindowsBounds = Partial<
+  Record<SocialWindowKind, SocialWindowBounds>
+>;
+
+/** A conversation waiting for the chat window to open its tab. */
+export interface PendingChatFriend {
+  friend: UserFriend;
+  /** Opened for a message the user hasn't seen: the tab doesn't take focus. */
+  isBackground: boolean;
+}
+
+export interface NotificationSync {
+  notificationCount: number;
+}
+
+export interface FriendRequest {
+  id: string;
+  displayName: string;
+  profileImageUrl: string | null;
+  type: "SENT" | "RECEIVED";
+}
+
+export interface UserRelation {
+  AId: string;
+  BId: string;
+  status: "ACCEPTED" | "PENDING";
+}
+
+export type UserProfileCurrentGame = GameRunning &
+  ShopAssets & {
+    sessionDurationInSeconds: number;
+    isHiddenFromOthers?: boolean;
+  };
+
+export type ProfileVisibility = "PUBLIC" | "PRIVATE" | "FRIENDS";
+export type SouvenirSort = "recent" | "oldest" | "rare";
+export type SouvenirsHiddenReason = "FRIENDS_ONLY" | "PRIVATE" | null;
+
+export interface Badge {
+  name: string;
+  title: string;
+  description: string;
+  badge: {
+    url: string;
+  };
+}
+
+export interface UserDetails {
+  id: string;
+  username: string;
+  email: string | null;
+  displayName: string;
+  profileImageUrl: string | null;
+  backgroundImageUrl: string | null;
+  profileVisibility: ProfileVisibility;
+  allowCloudGifts: boolean;
+  allowLeaderboardNotifications?: boolean;
+  souvenirsVisibility: ProfileVisibility;
+  screenshotsVisibility?: ProfileVisibility;
+  screenshotCommentsPolicy?: ScreenshotCommentsPolicy;
+  bio: string;
+  workwondersJwt: string;
+  subscription: Subscription | null;
+  karma: number;
+  quirks?: {
+    backupsPerGameLimit: number;
+  };
+}
+
+export interface ProfileAchievement {
+  name: string;
+  displayName: string;
+  description: string;
+  imageUrl: string | null;
+  achievementIcon: string | null;
+  unlockTime: number;
+  points: number | null;
+  isRare: boolean | null;
+  isPlatinum: boolean;
+  gameUnlockedAchievementCount: number;
+  gameTotalAchievementCount: number;
+  visibility?: ProfileVisibility;
+  gameId: string;
+  objectId: string;
+  shop: GameShop;
+  gameTitle: string | null;
+  gameIconUrl: string | null;
+  gameContentWarning?: GameContentWarning;
+  gameContentDescriptorIds?: number[] | null;
+  likeCount: number;
+  likedByMe: boolean;
+}
+
+export interface ProfileSouvenirAchievement {
+  name: string;
+  displayName: string;
+  description: string;
+  achievementIcon: string | null;
+  unlockTime: number;
+  points: number | null;
+  isRare: boolean | null;
+  isPlatinum: boolean;
+}
+
+export interface ProfileSouvenir {
+  id: string;
+  imageUrl: string | null;
+  capturedAt: number;
+  primaryAchievementName: string;
+  achievements: ProfileSouvenirAchievement[];
+  visibility?: ProfileVisibility;
+  gameId: string;
+  objectId: string;
+  shop: GameShop;
+  gameTitle: string | null;
+  gameIconUrl: string | null;
+  gameContentWarning?: GameContentWarning;
+  gameContentDescriptorIds?: number[] | null;
+  likeCount: number;
+  likedByMe: boolean;
+}
+
+export interface SouvenirsResponse {
+  items: Array<ProfileSouvenir | ProfileAchievement>;
+  total: number;
+  hasReachedLimit: boolean;
+  hiddenReason: SouvenirsHiddenReason;
+}
+
+export interface UserProfile {
+  id: string;
+  displayName: string;
+  profileImageUrl: string | null;
+  email: string | null;
+  backgroundImageUrl: string | null;
+  profileVisibility: ProfileVisibility;
+  souvenirsVisibility: ProfileVisibility;
+  screenshotsVisibility?: ProfileVisibility;
+  screenshotCommentsPolicy?: ScreenshotCommentsPolicy;
+  screenshotCount?: number;
+  libraryGames: UserGame[];
+  recentGames: UserGame[];
+  friends: UserFriend[];
+  totalFriends: number;
+  relation: UserRelation | null;
+  currentGame: UserProfileCurrentGame | null;
+  bio: string;
+  hasActiveSubscription: boolean;
+  canReceiveCloudGift: boolean;
+  allowCloudGifts?: boolean;
+  karma: number;
+  quirks: {
+    backupsPerGameLimit: number;
+  };
+  badges: string[];
+  badgesDetails?: { badge: string; unlockedAt: string }[];
+  hasCompletedWrapped2025: boolean;
+  progress?: LevelProgress | null;
+  loginStreak?: LoginStreak | null;
+  /* The Hydra team's account (see UserFriend). */
+  isOfficial?: boolean;
+}
+
+export interface LevelProgress {
+  level: number;
+  xp: number;
+  xpToNextLevel: number | null;
+}
+
+export interface LoginStreak {
+  current: number;
+  record: number;
+  hasPlayedToday: boolean;
+}
+
+export type PassiveType =
+  | "session"
+  | "achievement"
+  | "souvenir"
+  | "review"
+  | "friend";
+
+export interface PassiveProgress {
+  type: PassiveType;
+  xp: number;
+  dailyLimit: number;
+  today: number;
+  pending: number;
+}
+
+export interface GamificationProgress extends LevelProgress {
+  coins: number;
+  cloudBoostPercent: number | null;
+  loginStreak: LoginStreak;
+  passives: PassiveProgress[];
+}
+
+export interface RewardProgress extends LevelProgress {
+  coins: number;
+}
+
+export type MissionKind = "daily" | "weekly";
+export type MissionGroup = "daily" | "medium" | "hard";
+export type MissionUnit = "seconds" | "days" | "count";
+
+export interface Mission {
+  kind: MissionKind;
+  slot: number;
+  key: string;
+  group: MissionGroup;
+  category: string;
+  unit: MissionUnit;
+  target: number;
+  current: number;
+  isComplete: boolean;
+  isClaimed: boolean;
+  pending: number;
+  xp: number;
+  coins: number;
+}
+
+export interface MissionPeriod {
+  period: string;
+  resetsAt: string;
+  missions: Mission[];
+}
+
+export interface MissionsResponse {
+  cloudBoostPercent: number | null;
+  daily: MissionPeriod;
+  weekly: MissionPeriod;
+  refresh: { isFreeAvailable: boolean; price: number };
+}
+
+export type TrailKey =
+  | "playtime"
+  | "achievements"
+  | "souvenirs"
+  | "friends"
+  | "reviews"
+  | "likesReceived";
+
+export interface TrailLevel {
+  level: number;
+  threshold: number;
+  xp: number;
+  coins: number;
+  isReached: boolean;
+  isClaimed: boolean;
+}
+
+export interface Trail {
+  key: TrailKey;
+  group: "solo" | "social";
+  current: number;
+  isComplete: boolean;
+  pending: number;
+  levels: TrailLevel[];
+}
+
+export interface RewardClaimResponse {
+  wasClaimed: boolean;
+  xp: number;
+  coins: number;
+  progress: RewardProgress;
+}
+
+export interface MissionRefreshResponse {
+  wasFree: boolean;
+  mission: Mission;
+  progress: RewardProgress;
+}
+
+export interface UpdateProfileRequest {
+  displayName?: string;
+  profileVisibility?: ProfileVisibility;
+  souvenirsVisibility?: ProfileVisibility;
+  screenshotsVisibility?: ProfileVisibility;
+  screenshotCommentsPolicy?: ScreenshotCommentsPolicy;
+  profileImageUrl?: string | null;
+  backgroundImageUrl?: string | null;
+  bio?: string;
+  language?: string;
+  allowCloudGifts?: boolean;
+  allowLeaderboardNotifications?: boolean;
+}
+
+export interface OpenCheckoutOptions {
+  path?: "/" | "/gift" | `/gifts/${string}`;
+  recipientId?: string;
+}
+
+export interface DownloadSourceDownload {
+  title: string;
+  uris: string[];
+  uriGroups?: string[][];
+  uploadDate: string;
+  fileSize: string;
+}
+
+export interface GameStats {
+  downloadCount: number;
+  playerCount: number;
+  averageScore: number | null;
+  reviewCount: number;
+}
+
+export interface GameReviewAnswer {
+  id: string;
+  answerHtml: string;
+  createdAt: string;
+  updatedAt: string;
+  upvotes: number;
+  downvotes: number;
+  isBlocked: boolean;
+  hasUpvoted: boolean;
+  hasDownvoted: boolean;
+  user: {
+    id: string;
+    displayName: string;
+    profileImageUrl: string | null;
+    backgroundImageUrl?: string | null;
+  };
+  translations: {
+    [key: string]: string;
+  };
+  detectedLanguage: string | null;
+}
+
+export interface GameReview {
+  id: string;
+  reviewHtml: string;
+  score: number;
+  createdAt: string;
+  updatedAt: string;
+  upvotes: number;
+  downvotes: number;
+  answerCount: number;
+  answers: GameReviewAnswer[];
+  isBlocked: boolean;
+  hasUpvoted: boolean;
+  hasDownvoted: boolean;
+  playTimeInSeconds?: number;
+  user: {
+    id: string;
+    displayName: string;
+    profileImageUrl: string | null;
+    backgroundImageUrl?: string | null;
+  };
+  translations: {
+    [key: string]: string;
+  };
+  detectedLanguage: string | null;
+  recompilation?: {
+    slug: string;
+    name: string;
+    iconUrl: string | null;
+  } | null;
+}
+
+export interface TrendingGame extends ShopAssets {
+  description: string | null;
+  uri: string;
+}
+
+export interface UserStatsPercentile {
+  value: number;
+  topPercentile: number;
+}
+
+export interface UserStats {
+  libraryCount: number;
+  friendsCount: number;
+  totalPlayTimeInSeconds: UserStatsPercentile;
+  achievementsPointsEarnedSum?: UserStatsPercentile;
+  unlockedAchievementSum?: number;
+}
+
+export interface UpdatedUnlockedAchievements {
+  objectId: string;
+  shop: GameShop;
+  achievements: UnlockedAchievement[];
+  souvenirs?: Array<{
+    clientId: string;
+    id: string;
+  }>;
+}
+
+export interface AchievementFile {
+  type: Cracker;
+  filePath: string;
+}
+
+export type GameAchievementFiles = {
+  [id: string]: AchievementFile[];
+};
+
+export interface AchievementMetadataEntry {
+  description: string;
+  displayName: string;
+  hidden: 0 | 1;
+  icon: string;
+  icongray: string;
+  name: string;
+}
+
+export type GameLauncherStatus =
+  | "generating_achievements"
+  | "downloading_achievement_icons"
+  | "preparing_compatibility_layer"
+  | "compatibility_layer_ready"
+  | "compatibility_layer_failed"
+  | "game_started"
+  | "complete";
+
+export interface GameLauncherStatusPayload {
+  gameKey: string;
+  status: GameLauncherStatus;
+  detail: string | null;
+}
+
+export interface AchievementNotificationInfo {
+  title: string;
+  description?: string;
+  iconUrl: string;
+  isHidden: boolean;
+  isRare: boolean;
+  isPlatinum: boolean;
+  points?: number;
+  variant?: "screenshot" | "screenshot-error";
+}
+
+export type AchievementNotificationRequest = {
+  id: string;
+  batchId: string;
+  position: AchievementCustomNotificationPosition;
+} & (
+  | {
+      type: "achievement";
+      achievement: AchievementNotificationInfo;
+    }
+  | {
+      type: "combined";
+      gameCount: number;
+      achievementCount: number;
+    }
+  | {
+      type: "screenshot";
+      achievement: AchievementNotificationInfo;
+    }
+);
+
+export interface GameArtifact {
+  id: string;
+  artifactLengthInBytes: number;
+  downloadOptionTitle: string | null;
+  createdAt: string;
+  updatedAt: string;
+  hostname: string;
+  downloadCount: number;
+  label?: string;
+  isFrozen: boolean;
+}
+
+export type LegacySaveExportResult =
+  | { status: "saved"; filePath: string }
+  | { status: "cancelled" }
+  | { status: "busy" };
+
+export interface LegacySaveExportProgress {
+  downloadedBytes: number;
+  totalBytes: number | null;
+  percentage: number | null;
+}
+
+export interface LegacySaveExportIpcProgress extends LegacySaveExportProgress {
+  operationId: string;
+}
+
+export type NotificationType =
+  | "FRIEND_REQUEST_RECEIVED"
+  | "FRIEND_REQUEST_ACCEPTED"
+  | "BADGE_RECEIVED"
+  | "REVIEW_UPVOTE"
+  | "REVIEW_ANSWER"
+  | "REVIEW_ANSWER_UPVOTE"
+  | "SOUVENIR_LIKE"
+  | "SCREENSHOT_LIKE"
+  | "SCREENSHOT_COMMENT"
+  | "SCREENSHOT_COMMENT_UPVOTE"
+  | "RETROACHIEVEMENTS_CREDENTIALS_RESTORED"
+  | "RETROACHIEVEMENTS_CREDENTIALS_INVALID"
+  | "RETROACHIEVEMENTS_SYNC_FAILED"
+  | "CLOUD_GIFT_RECEIVED"
+  | "LEADERBOARD_RANK_CHANGED"
+  | "LEADERBOARD_MISSING_PHOTO";
+
+export type LocalNotificationType =
+  | "EXTRACTION_COMPLETE"
+  | "DOWNLOAD_COMPLETE"
+  | "UPDATE_AVAILABLE"
+  | "ACHIEVEMENT_UNLOCKED"
+  | "SCAN_GAMES_COMPLETE";
+
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  variables: Record<string, string>;
+  pictureUrl: string | null;
+  url: string | null;
+  isRead: boolean;
+  priority: number;
+  createdAt: string;
+}
+
+export interface LocalNotification {
+  id: string;
+  type: LocalNotificationType;
+  title: string;
+  description: string;
+  pictureUrl: string | null;
+  url: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export type MergedNotification =
+  | (Notification & { source: "api" })
+  | (LocalNotification & { source: "local" });
+
+export interface NotificationsResponse {
+  notifications: Notification[];
+  pagination: {
+    total: number;
+    take: number;
+    skip: number;
+    hasMore: boolean;
+  };
+}
+
+export interface NotificationCountResponse {
+  count: number;
+}
+
+export interface NotificationsChangedDetail {
+  apiUnreadDelta?: number;
+  resetApiUnread?: boolean;
+}
+
+export interface ComparedAchievements {
+  achievementsPointsTotal: number;
+  owner: {
+    totalAchievementCount: number;
+    unlockedAchievementCount: number;
+    achievementsPointsEarnedSum?: number;
+  };
+  target: {
+    displayName: string;
+    profileImageUrl: string;
+    totalAchievementCount: number;
+    unlockedAchievementCount: number;
+    achievementsPointsEarnedSum: number;
+  };
+  achievements: {
+    hidden: boolean;
+    icon: string;
+    displayName: string;
+    description: string;
+    points?: number;
+    globalUnlockPercentage?: number | null;
+    set?: AchievementSet | null;
+    ownerStat?: {
+      unlocked: boolean;
+      unlockTime: number;
+      hardcoreUnlockTime?: number | null;
+    };
+    targetStat: {
+      unlocked: boolean;
+      unlockTime: number;
+      hardcoreUnlockTime?: number | null;
+    };
+  }[];
+}
+
+export interface CatalogueSearchPayload {
+  title: string;
+  sortBy:
+    | "popularity"
+    | "reviewScore"
+    | "alphabetical"
+    | "hydraScore"
+    | "releaseDate";
+  sortOrder: "asc" | "desc";
+  downloadSourceFingerprints: string[];
+  tags: number[];
+  publishers: string[];
+  genres: string[];
+  developers: string[];
+  protondbSupportBadges: (
+    | "borked"
+    | "bronze"
+    | "silver"
+    | "gold"
+    | "platinum"
+  )[];
+  deckCompatibility: ("verified" | "playable" | "unsupported" | "unknown")[];
+  releaseYear?: { gte?: number; lte?: number };
+  shops?: string[];
+  platforms?: string[];
+  recompilation?: "has";
+}
+
+export interface ProtonDBData {
+  tier: string | null;
+  confidence: string | null;
+  score: number | null;
+  total: number | null;
+  trendingTier: string | null;
+  resolvedCategory: number | null;
+  deckCompatibility: "verified" | "playable" | "unsupported" | "unknown" | null;
+}
+
+export type CatalogueSearchResult = {
+  id: string;
+  objectId: string;
+  title: string;
+  shop: GameShop;
+  genres: string[];
+  releaseYear: number | null;
+  tier?: string | null;
+  bestReportedTier?: string | null;
+  protondbSupportBadge?: string | null;
+  protondbSupportBadges?: string[];
+  deckCompatibility?: string | null;
+  deckCompatibilities?: string[];
+  platform?: string;
+  alternateNames?: string[];
+  developers?: string[];
+  publishers?: string[];
+  skus?: string[];
+  recompilations?: RecompilationSummary[];
+} & Pick<ShopAssets, "libraryImageUrl" | "downloadSources">;
+
+export type LibraryGame = Game &
+  Partial<ShopAssets> & {
+    id: string;
+    download: Download | null;
+    unlockedAchievementCount?: number;
+    achievementCount?: number;
+  };
+
+/** Read-only catalogue projection; writes must use its original members. */
+export type LibraryGamePresentation = LibraryGame & {
+  members: LibraryGame[];
+  operationalGame: LibraryGame;
+  achievementGame?: LibraryGame;
+  downloadGame: LibraryGame;
+  catalogueGame: CatalogueGameIdentity;
+  availableShops: GameShop[];
+};
+
+export type UserGameDetails = ShopAssets & {
+  id: string;
+  playTimeInSeconds: number;
+  unlockedAchievementCount: number;
+  achievementsPointsEarnedSum: number;
+  lastTimePlayed: Date | null;
+  isDeleted: boolean;
+  isFavorite: boolean;
+  friendsWhoPlayed: {
+    id: string;
+    displayName: string;
+    profileImageUrl: string | null;
+    lastTimePlayed: Date | null;
+    playTimeInSeconds: number;
+  }[];
+};
+
+export * from "./game.types";
+export * from "./steam.types";
+export * from "./steam-integration.types";
+export * from "./epic-integration.types";
+export * from "./epic-managed.types";
+export * from "./download.types";
+export * from "./ludusavi.types";
+export * from "./how-long-to-beat.types";
+export * from "./level.types";
+export * from "./theme.types";
+export * from "./emulator.types";
+export * from "./retroarch.types";
+export * from "./artwork.types";
+export * from "./cloud-save.types";
+export * from "./souvenir.types";
+export * from "./screenshot.types";
+export * from "./recompilation.types";
+
+export type ExtractionFailure =
+  | { reason: "unsupported-format"; format: string }
+  | { reason: "file-not-found" };
+export type { SystemPowerAction } from "./system-power";

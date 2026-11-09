@@ -1,0 +1,533 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { NoteIcon } from "@primer/octicons-react";
+import { useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Underline from "@tiptap/extension-underline";
+import { useTranslation } from "react-i18next";
+import type { GameReview, Game, GameShop } from "@types";
+
+import { ReviewForm } from "./review-form";
+import { ReviewGateNotice } from "./review-gate-notice";
+import { ReviewThread } from "./review-thread";
+import { ReviewSortOptions } from "./review-sort-options";
+import "./game-reviews.scss";
+import {
+  Button,
+  RichTextLimit,
+  clearRichTextEditorIfUnchanged,
+  measureRichTextDocText,
+  pasteWithinRichTextLimit,
+} from "@renderer/components";
+import { useToast } from "@renderer/hooks";
+import { REVIEW_MIN_PLAYTIME_IN_MS } from "@renderer/constants";
+import { getDisplayedPlayTimeInMilliseconds } from "@shared";
+import { logger } from "@renderer/logger";
+
+type ReviewSortOption =
+  | "newest"
+  | "oldest"
+  | "score_high"
+  | "score_low"
+  | "most_voted";
+
+interface GameReviewsProps {
+  shop: GameShop;
+  objectId: string;
+  game: Game | null;
+  userDetailsId?: string;
+  hasUserReviewed: boolean;
+  isCheckingUserReview: boolean;
+  onUserReviewedChange: (hasReviewed: boolean) => void;
+  recompilationSlug?: string;
+}
+
+const MAX_REVIEW_CHARS = 1000;
+
+export function GameReviews({
+  shop,
+  objectId,
+  game,
+  userDetailsId,
+  hasUserReviewed,
+  isCheckingUserReview,
+  onUserReviewedChange,
+  recompilationSlug,
+}: Readonly<GameReviewsProps>) {
+  const { t, i18n } = useTranslation("game_details");
+  const { showSuccessToast, showErrorToast } = useToast();
+
+  const [reviews, setReviews] = useState<GameReview[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewScore, setReviewScore] = useState<number | null>(null);
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewCharCount, setReviewCharCount] = useState(0);
+  const [reviewsSortBy, setReviewsSortBy] =
+    useState<ReviewSortOption>("newest");
+  const [reviewsPage, setReviewsPage] = useState(0);
+  const [hasMoreReviews, setHasMoreReviews] = useState(true);
+  const [visibleBlockedReviews, setVisibleBlockedReviews] = useState<
+    Set<string>
+  >(new Set());
+  const [totalReviewCount, setTotalReviewCount] = useState(0);
+  const [votingReviews, setVotingReviews] = useState<Set<string>>(new Set());
+  const [openReplyReviewId, setOpenReplyReviewId] = useState<string | null>(
+    null
+  );
+
+  const [removedGamePlaytime, setRemovedGamePlaytime] = useState(0);
+  const isInLibrary = game !== null;
+
+  useEffect(() => {
+    setRemovedGamePlaytime(0);
+    if (isInLibrary) return;
+
+    let cancelled = false;
+    window.electron
+      .getGameReviewPlaytime(shop, objectId)
+      .then((playtime) => {
+        if (!cancelled) setRemovedGamePlaytime(playtime);
+      })
+      .catch((error) => logger.error("Failed to load review playtime:", error));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isInLibrary, shop, objectId]);
+
+  const playTimeInMilliseconds = game
+    ? getDisplayedPlayTimeInMilliseconds(game)
+    : removedGamePlaytime;
+  const hasEnoughPlaytime = playTimeInMilliseconds >= REVIEW_MIN_PLAYTIME_IN_MS;
+  const isReviewLocked = !userDetailsId || !hasEnoughPlaytime;
+  const canReply =
+    Boolean(userDetailsId) && (hasEnoughPlaytime || hasUserReviewed);
+
+  const previousVotesRef = useRef<
+    Map<string, { upvotes: number; downvotes: number }>
+  >(new Map());
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        link: false,
+      }),
+      Underline,
+      RichTextLimit.configure({ maxLength: MAX_REVIEW_CHARS }),
+    ],
+    content: "",
+    editorProps: {
+      attributes: {
+        class: "game-details__review-editor",
+        "data-placeholder": t("write_review_placeholder"),
+      },
+      handlePaste: (view, _event, slice) =>
+        pasteWithinRichTextLimit(
+          view,
+          slice,
+          MAX_REVIEW_CHARS,
+          measureRichTextDocText
+        ),
+    },
+    onUpdate: ({ editor }) => {
+      setReviewCharCount(editor.getText().length);
+    },
+  });
+
+  const loadReviews = useCallback(
+    async (reset = false) => {
+      if (!objectId || shop === "custom") return;
+
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+
+      setReviewsLoading(true);
+      try {
+        const skip = reset ? 0 : reviewsPage * 20;
+        const params = new URLSearchParams({
+          take: "20",
+          skip: skip.toString(),
+          sortBy: reviewsSortBy,
+        });
+        if (recompilationSlug) {
+          params.set("recompilationSlug", recompilationSlug);
+        }
+
+        const response = await window.electron.hydraApi.get(
+          `/games/${shop}/${objectId}/reviews?${params.toString()}`,
+          { needsAuth: false }
+        );
+
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        const typedResponse = response as unknown as
+          | { reviews: GameReview[]; totalCount: number }
+          | undefined;
+        const reviewsData = typedResponse?.reviews || [];
+        const reviewCount = typedResponse?.totalCount || 0;
+
+        if (reset) {
+          setReviews(reviewsData);
+          setReviewsPage(0);
+          setTotalReviewCount(reviewCount);
+        } else {
+          setReviews((prev) => [...prev, ...reviewsData]);
+        }
+
+        setHasMoreReviews(reviewsData.length === 20);
+      } catch (error) {
+        if (!abortController.signal.aborted) {
+          console.error("Failed to load reviews:", error);
+        }
+      } finally {
+        if (!abortController.signal.aborted) {
+          setReviewsLoading(false);
+        }
+      }
+    },
+    [
+      objectId,
+      shop,
+      reviewsPage,
+      reviewsSortBy,
+      i18n.language,
+      recompilationSlug,
+    ]
+  );
+
+  const handleVoteReview = async (
+    reviewId: string,
+    voteType: "upvote" | "downvote"
+  ) => {
+    if (!objectId || votingReviews.has(reviewId)) return;
+
+    setVotingReviews((prev) => new Set(prev).add(reviewId));
+
+    const reviewIndex = reviews.findIndex((r) => r.id === reviewId);
+    if (reviewIndex === -1) {
+      setVotingReviews((prev) => {
+        const next = new Set(prev);
+        next.delete(reviewId);
+        return next;
+      });
+      return;
+    }
+
+    const review = reviews[reviewIndex];
+    const originalReview = { ...review };
+
+    const updatedReviews = [...reviews];
+    const updatedReview = { ...review };
+
+    if (voteType === "upvote") {
+      if (review.hasUpvoted) {
+        updatedReview.hasUpvoted = false;
+        updatedReview.upvotes = Math.max(0, (review.upvotes || 0) - 1);
+      } else {
+        updatedReview.hasUpvoted = true;
+        updatedReview.upvotes = (review.upvotes || 0) + 1;
+
+        if (review.hasDownvoted) {
+          updatedReview.hasDownvoted = false;
+          updatedReview.downvotes = Math.max(0, (review.downvotes || 0) - 1);
+        }
+      }
+    } else {
+      if (review.hasDownvoted) {
+        updatedReview.hasDownvoted = false;
+        updatedReview.downvotes = Math.max(0, (review.downvotes || 0) - 1);
+      } else {
+        updatedReview.hasDownvoted = true;
+        updatedReview.downvotes = (review.downvotes || 0) + 1;
+
+        if (review.hasUpvoted) {
+          updatedReview.hasUpvoted = false;
+          updatedReview.upvotes = Math.max(0, (review.upvotes || 0) - 1);
+        }
+      }
+    }
+
+    updatedReviews[reviewIndex] = updatedReview;
+    setReviews(updatedReviews);
+
+    try {
+      await window.electron.hydraApi.put(
+        `/games/${shop}/${objectId}/reviews/${reviewId}/${voteType}`,
+        { data: {} }
+      );
+    } catch (error) {
+      console.error(`Failed to ${voteType} review:`, error);
+
+      const rolledBackReviews = [...reviews];
+      rolledBackReviews[reviewIndex] = originalReview;
+      setReviews(rolledBackReviews);
+
+      showErrorToast(t("vote_failed"));
+    } finally {
+      setTimeout(() => {
+        setVotingReviews((prev) => {
+          const next = new Set(prev);
+          next.delete(reviewId);
+          return next;
+        });
+      }, 500);
+    }
+  };
+
+  const handleDeleteReview = async (reviewId: string) => {
+    if (!objectId) return;
+
+    try {
+      await window.electron.hydraApi.delete(
+        `/games/${shop}/${objectId}/reviews/${reviewId}`
+      );
+      loadReviews(true);
+      onUserReviewedChange(false);
+      showSuccessToast(t("review_deleted_successfully"));
+    } catch (error) {
+      console.error("Failed to delete review:", error);
+      showErrorToast(t("review_deletion_failed"));
+    }
+  };
+
+  const handleSubmitReview = async () => {
+    const reviewHtml = editor?.getHTML() || "";
+    const reviewText = editor?.getText() || "";
+
+    if (!objectId || isReviewLocked) return;
+
+    if (!reviewText.trim()) {
+      showErrorToast(t("review_cannot_be_empty"));
+      return;
+    }
+
+    if (submittingReview || reviewCharCount > MAX_REVIEW_CHARS) {
+      return;
+    }
+
+    if (reviewScore === null) {
+      return;
+    }
+
+    setSubmittingReview(true);
+
+    try {
+      await window.electron.hydraApi.post(
+        `/games/${shop}/${objectId}/reviews`,
+        {
+          data: {
+            reviewHtml,
+            score: reviewScore,
+            ...(recompilationSlug ? { recompilationSlug } : {}),
+          },
+        }
+      );
+
+      clearRichTextEditorIfUnchanged(editor, reviewHtml);
+      setReviewScore(null);
+      showSuccessToast(t("review_submitted_successfully"));
+
+      await loadReviews(true);
+      onUserReviewedChange(true);
+    } catch (error) {
+      console.error("Failed to submit review:", error);
+      showErrorToast(t("review_submission_failed"));
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+  const handleSortChange = (newSortBy: ReviewSortOption) => {
+    if (newSortBy !== reviewsSortBy) {
+      setReviewsSortBy(newSortBy);
+      setReviewsPage(0);
+      setHasMoreReviews(true);
+      loadReviews(true);
+    }
+  };
+
+  const toggleBlockedReview = (reviewId: string) => {
+    setVisibleBlockedReviews((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(reviewId)) {
+        newSet.delete(reviewId);
+      } else {
+        newSet.add(reviewId);
+      }
+      return newSet;
+    });
+  };
+
+  const loadMoreReviews = () => {
+    if (!reviewsLoading && hasMoreReviews) {
+      setReviewsPage((prev) => prev + 1);
+      loadReviews(false);
+    }
+  };
+
+  const handleVoteAnimationComplete = (
+    reviewId: string,
+    votes: { upvotes: number; downvotes: number }
+  ) => {
+    previousVotesRef.current.set(reviewId, votes);
+  };
+
+  useEffect(() => {
+    editor?.setEditable(!isReviewLocked && !submittingReview);
+  }, [editor, isReviewLocked, submittingReview]);
+
+  useEffect(() => {
+    if (objectId) {
+      loadReviews(true);
+    }
+
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, [objectId, loadReviews]);
+
+  useEffect(() => {
+    if (reviewsPage > 0) {
+      loadReviews(false);
+    }
+  }, [reviewsPage, loadReviews]);
+
+  useEffect(() => {
+    reviews.forEach((review) => {
+      if (!previousVotesRef.current.has(review.id)) {
+        previousVotesRef.current.set(review.id, {
+          upvotes: review.upvotes || 0,
+          downvotes: review.downvotes || 0,
+        });
+      }
+    });
+  }, [reviews]);
+
+  return (
+    <div className="game-details__reviews-section">
+      {/* Kept in the layout (hidden) while the review check runs: most
+          visitors haven't reviewed, so the form usually stays and the list
+          below it doesn't jump when the answer arrives. */}
+      {!hasUserReviewed && (
+        <div
+          className={`game-details__leave-review${isCheckingUserReview ? " game-details__leave-review--pending" : ""}`}
+          aria-hidden={isCheckingUserReview}
+        >
+          <div className="game-details__reviews-header">
+            <h3 className="game-details__reviews-title">
+              {t("leave_a_review")}
+            </h3>
+          </div>
+
+          {isReviewLocked ? (
+            <ReviewGateNotice isSignedIn={Boolean(userDetailsId)} />
+          ) : (
+            <ReviewForm
+              editor={editor}
+              reviewScore={reviewScore}
+              reviewCharCount={reviewCharCount}
+              maxReviewChars={MAX_REVIEW_CHARS}
+              submittingReview={submittingReview}
+              onScoreChange={setReviewScore}
+              onSubmit={handleSubmitReview}
+            />
+          )}
+          <div className="game-details__reviews-separator"></div>
+        </div>
+      )}
+
+      <div className="game-details__reviews-list-header">
+        <div className="game-details__reviews-title-group">
+          <h3 className="game-details__reviews-title">{t("reviews")}</h3>
+          <span className="game-details__reviews-badge">
+            {totalReviewCount}
+          </span>
+        </div>
+      </div>
+      <ReviewSortOptions
+        sortBy={reviewsSortBy}
+        onSortChange={handleSortChange}
+      />
+
+      {reviewsLoading && reviews.length === 0 && (
+        <div className="game-details__reviews-loading">
+          {t("loading_reviews")}
+        </div>
+      )}
+
+      {!reviewsLoading && reviews.length === 0 && (
+        <div className="game-details__reviews-empty">
+          <div className="game-details__reviews-empty-icon">
+            <NoteIcon size={48} />
+          </div>
+          <h4 className="game-details__reviews-empty-title">
+            {t("no_reviews_yet")}
+          </h4>
+          <p className="game-details__reviews-empty-message">
+            {t("be_first_to_review")}
+          </p>
+        </div>
+      )}
+
+      <div
+        className="game-details__reviews-container"
+        style={{
+          opacity: reviewsLoading && reviews.length > 0 ? 0.5 : 1,
+          transition: "opacity 0.2s ease",
+        }}
+      >
+        {reviews.map((review) => (
+          <ReviewThread
+            key={review.id}
+            shop={shop}
+            objectId={objectId}
+            review={review}
+            userDetailsId={userDetailsId}
+            canReply={canReply}
+            isVisible={visibleBlockedReviews.has(review.id)}
+            isVoting={votingReviews.has(review.id)}
+            previousVotes={
+              previousVotesRef.current.get(review.id) || {
+                upvotes: 0,
+                downvotes: 0,
+              }
+            }
+            onVoteReview={handleVoteReview}
+            onDeleteReview={handleDeleteReview}
+            onToggleVisibility={toggleBlockedReview}
+            onAnimationComplete={handleVoteAnimationComplete}
+            composerOpen={openReplyReviewId === review.id}
+            onComposerOpenChange={(open) =>
+              setOpenReplyReviewId(open ? review.id : null)
+            }
+          />
+        ))}
+      </div>
+
+      {hasMoreReviews && !reviewsLoading && (
+        <Button
+          theme="outline"
+          className="game-details__load-more-reviews"
+          onClick={loadMoreReviews}
+        >
+          {t("load_more_reviews")}
+        </Button>
+      )}
+
+      {reviewsLoading && reviews.length > 0 && (
+        <div className="game-details__reviews-loading">
+          {t("loading_more_reviews")}
+        </div>
+      )}
+    </div>
+  );
+}

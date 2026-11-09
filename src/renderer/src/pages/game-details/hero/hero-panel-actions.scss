@@ -1,0 +1,28 @@
+@use "../../../scss/globals.scss";
+
+.hero-panel-actions {
+  &__epic-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: globals.$spacing-unit;
+  }
+
+  &__action {
+    border: solid 1px globals.$muted-color;
+
+    &--disabled {
+      opacity: 0.5;
+    }
+  }
+
+  &__container {
+    display: flex;
+    gap: calc(globals.$spacing-unit * 2);
+  }
+
+  &__separator {
+    width: 1px;
+    background-color: globals.$muted-color;
+    opacity: 0.2;
+  }
+}

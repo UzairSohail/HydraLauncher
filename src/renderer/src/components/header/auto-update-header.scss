@@ -1,0 +1,33 @@
+@use "../../scss/globals.scss";
+
+.auto-update-sub-header {
+  border-bottom: solid 1px globals.$border-color;
+  padding: calc(globals.$spacing-unit / 2) calc(globals.$spacing-unit * 3);
+  background-color: globals.$dark-background-color;
+
+  &__new-version-link {
+    display: flex;
+    align-items: center;
+    gap: globals.$spacing-unit;
+    color: globals.$subtle-color;
+    font-size: globals.$small-font-size;
+  }
+
+  &__new-version-icon {
+    color: globals.$success-color;
+  }
+
+  &__new-version-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: globals.$spacing-unit;
+    color: globals.$body-color;
+    font-size: globals.$small-font-size;
+
+    &:hover {
+      text-decoration: underline;
+      cursor: pointer;
+    }
+  }
+}

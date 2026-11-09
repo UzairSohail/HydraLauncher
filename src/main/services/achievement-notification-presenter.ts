@@ -1,0 +1,516 @@
+import type {
+  AchievementCustomNotificationPosition,
+  AchievementNotificationInfo,
+  AchievementNotificationRequest,
+} from "@types";
+
+export const ACHIEVEMENT_NOTIFICATION_HOST_READY_TIMEOUT = 7_000;
+export const ACHIEVEMENT_NOTIFICATION_CONTENT_READY_TIMEOUT = 5_000;
+export const ACHIEVEMENT_NOTIFICATION_COMPLETION_TIMEOUT = 8_500;
+
+export type AchievementNotificationRendererEvent =
+  | { type: "host-ready" }
+  | { type: "content-ready"; requestId: string }
+  | { type: "started"; requestId: string }
+  | { type: "sound-played"; requestId: string; batchId: string }
+  | { type: "finished"; requestId: string }
+  | { type: "failed"; requestId?: string; reason?: string };
+
+export interface AchievementNotificationHost {
+  readonly webContentsId: number;
+  load(): Promise<void>;
+  send(channel: string, ...args: unknown[]): void;
+  setPosition(position: AchievementCustomNotificationPosition): Promise<void>;
+  setContentProtection(isProtected: boolean): void;
+  showInactive(): void;
+  isVisible(): boolean;
+  hide(): void;
+  destroy(): void;
+  isDestroyed(): boolean;
+  onFailure(listener: (reason: string) => void): void;
+}
+
+type TimeoutHandle = ReturnType<typeof setTimeout>;
+type NotificationFallback = (
+  requests: AchievementNotificationRequest[],
+  soundPlayed: boolean
+) => void | Promise<void>;
+
+interface FallbackReference {
+  callback?: NotificationFallback;
+  invoked: boolean;
+  soundPlayed: boolean;
+}
+
+interface QueueItem {
+  request: AchievementNotificationRequest;
+  fallback: FallbackReference;
+  shown: boolean;
+}
+
+export interface AchievementNotificationPresenterDependencies {
+  createHost(
+    position: AchievementCustomNotificationPosition
+  ): Promise<AchievementNotificationHost>;
+  setTimeout(callback: () => void, delay: number): TimeoutHandle;
+  clearTimeout(timeout: TimeoutHandle): void;
+  log(message: string, ...args: unknown[]): void;
+  logError(message: string, ...args: unknown[]): void;
+}
+
+type PresenterStage =
+  | "idle"
+  | "loading"
+  | "ready"
+  | "positioning"
+  | "preparing"
+  | "visible";
+
+export class AchievementNotificationPresenter {
+  private queue: QueueItem[] = [];
+  private activeItem: QueueItem | null = null;
+  private host: AchievementNotificationHost | null = null;
+  private stage: PresenterStage = "idle";
+  private requestSequence = 0;
+  private batchSequence = 0;
+  private generation = 0;
+  private creatingHost = false;
+  private watchdog: TimeoutHandle | null = null;
+  private warmPosition: AchievementCustomNotificationPosition | null = null;
+  private shutdownRequested = false;
+
+  constructor(
+    private readonly dependencies: AchievementNotificationPresenterDependencies
+  ) {}
+
+  public enqueueAchievements(
+    position: AchievementCustomNotificationPosition,
+    achievements: AchievementNotificationInfo[],
+    fallback?: NotificationFallback
+  ): void {
+    if (this.shutdownRequested || !achievements.length) return;
+
+    const fallbackReference: FallbackReference = {
+      callback: fallback,
+      invoked: false,
+      soundPlayed: false,
+    };
+    const batchId = this.nextBatchId();
+
+    this.queue.push(
+      ...achievements.map((achievement) => ({
+        request: {
+          id: this.nextRequestId(),
+          batchId,
+          type: "achievement" as const,
+          position,
+          achievement,
+        },
+        fallback: fallbackReference,
+        shown: false,
+      }))
+    );
+
+    this.present();
+  }
+
+  public enqueueCombined(
+    position: AchievementCustomNotificationPosition,
+    gameCount: number,
+    achievementCount: number,
+    fallback?: NotificationFallback
+  ): void {
+    if (this.shutdownRequested || gameCount <= 0 || achievementCount <= 0) {
+      return;
+    }
+
+    this.queue.push({
+      request: {
+        id: this.nextRequestId(),
+        batchId: this.nextBatchId(),
+        type: "combined",
+        position,
+        gameCount,
+        achievementCount,
+      },
+      fallback: { callback: fallback, invoked: false, soundPlayed: false },
+      shown: false,
+    });
+
+    this.present();
+  }
+
+  public enqueueScreenshot(
+    position: AchievementCustomNotificationPosition,
+    notification: AchievementNotificationInfo,
+    fallback?: NotificationFallback
+  ): void {
+    if (this.shutdownRequested) return;
+
+    const variant = notification.variant ?? "screenshot";
+    this.queue = this.queue.filter(
+      ({ request }) =>
+        request.type !== "screenshot" || request.achievement.variant !== variant
+    );
+    this.queue.push({
+      request: {
+        id: this.nextRequestId(),
+        batchId: this.nextBatchId(),
+        type: "screenshot",
+        position,
+        achievement: { ...notification, variant },
+      },
+      fallback: { callback: fallback, invoked: false, soundPlayed: false },
+      shown: false,
+    });
+
+    this.present();
+  }
+
+  public keepWarm(position: AchievementCustomNotificationPosition): void {
+    if (this.shutdownRequested) return;
+    this.warmPosition = position;
+    this.ensureHost();
+  }
+
+  public releaseWarm(): void {
+    if (!this.warmPosition) return;
+    this.warmPosition = null;
+    if (!this.activeItem && !this.queue.length && this.stage === "ready") {
+      this.destroyHost();
+    }
+  }
+
+  private present(): void {
+    this.ensureHost();
+    if (!this.activeItem) this.processNext();
+  }
+
+  public notifyThemeUpdated(): void {
+    if (!this.host || this.host.isDestroyed()) return;
+    this.host.send("on-custom-theme-updated");
+  }
+
+  public handleRendererEvent(
+    senderId: number,
+    event: AchievementNotificationRendererEvent
+  ): void {
+    const host = this.host;
+    if (!host || host.isDestroyed() || host.webContentsId !== senderId) return;
+
+    if (event.type === "host-ready") {
+      this.handleHostReadyEvent();
+      return;
+    }
+
+    if (event.type === "failed") {
+      this.handleFailedEvent(event);
+      return;
+    }
+
+    if (event.type === "sound-played") {
+      if (this.activeItem?.request.batchId !== event.batchId) return;
+      this.activeItem.fallback.soundPlayed = true;
+      if (this.activeItem.request.id === event.requestId) {
+        this.activeItem.shown = true;
+      }
+      return;
+    }
+
+    if (this.activeItem?.request.id !== event.requestId) return;
+    const activeRequest = this.activeItem.request;
+
+    if (event.type === "content-ready") {
+      this.handleContentReadyEvent(host, activeRequest.id);
+      return;
+    }
+
+    if (event.type === "started") {
+      if (this.stage !== "visible") return;
+      this.dependencies.log(
+        `Achievement notification started: ${event.requestId}`
+      );
+      this.activeItem.shown = true;
+      return;
+    }
+
+    this.handleFinishedEvent(host);
+  }
+
+  private handleHostReadyEvent(): void {
+    if (this.stage !== "loading") return;
+    this.clearWatchdog();
+    this.stage = "ready";
+    this.processNext();
+  }
+
+  private handleFailedEvent(
+    event: Extract<AchievementNotificationRendererEvent, { type: "failed" }>
+  ): void {
+    if (event.requestId && event.requestId !== this.activeItem?.request.id) {
+      return;
+    }
+
+    this.failHost(event.reason ?? "notification renderer failed");
+  }
+
+  private handleContentReadyEvent(
+    host: AchievementNotificationHost,
+    requestId: string
+  ): void {
+    if (this.stage !== "preparing") return;
+
+    this.clearWatchdog();
+    this.stage = "visible";
+
+    try {
+      this.dependencies.log(`Achievement notification showing: ${requestId}`);
+      host.setContentProtection(this.activeItem?.request.type === "screenshot");
+      host.showInactive();
+      host.send("start-achievement-notification", requestId, host.isVisible());
+      this.startWatchdog(
+        ACHIEVEMENT_NOTIFICATION_COMPLETION_TIMEOUT,
+        "notification animation timed out"
+      );
+    } catch (error) {
+      if (this.host === host) {
+        this.failHost("failed to start notification", error);
+      }
+    }
+  }
+
+  private handleFinishedEvent(host: AchievementNotificationHost): void {
+    if (this.stage !== "visible") return;
+
+    this.dependencies.log(
+      `Achievement notification finished: ${this.activeItem?.request.id}`
+    );
+    this.clearWatchdog();
+    try {
+      host.hide();
+    } catch (error) {
+      this.dependencies.logError(
+        "Failed to hide achievement notification window",
+        error
+      );
+    }
+
+    this.activeItem = null;
+
+    if (this.queue.length) {
+      this.stage = "ready";
+      this.processNext();
+    } else if (this.warmPosition) {
+      this.stage = "ready";
+    } else {
+      this.destroyHost();
+    }
+  }
+
+  public dispose(): void {
+    this.generation += 1;
+    this.warmPosition = null;
+    this.queue = [];
+    this.activeItem = null;
+    this.creatingHost = false;
+    this.clearWatchdog();
+    this.destroyCurrentHost();
+    this.stage = "idle";
+  }
+
+  public shutdown(): void {
+    this.shutdownRequested = true;
+    this.dispose();
+  }
+
+  private nextRequestId(): string {
+    this.requestSequence += 1;
+    return `achievement-notification-${this.requestSequence}`;
+  }
+
+  private nextBatchId(): string {
+    this.batchSequence += 1;
+    return `achievement-notification-batch-${this.batchSequence}`;
+  }
+
+  private ensureHost(): void {
+    if (this.host || this.creatingHost) return;
+    const position = this.queue[0]?.request.position ?? this.warmPosition;
+    if (!position) return;
+
+    const generation = this.generation;
+    this.creatingHost = true;
+
+    void this.dependencies
+      .createHost(position)
+      .then((host) => {
+        if (
+          generation !== this.generation ||
+          (!this.queue.length && !this.warmPosition)
+        ) {
+          if (!host.isDestroyed()) host.destroy();
+          return;
+        }
+
+        this.creatingHost = false;
+        this.host = host;
+        this.stage = "loading";
+
+        host.onFailure((reason) => {
+          if (this.host !== host) return;
+          this.failHost(reason);
+        });
+
+        this.startWatchdog(
+          ACHIEVEMENT_NOTIFICATION_HOST_READY_TIMEOUT,
+          "notification renderer did not become ready"
+        );
+
+        void host.load().catch((error) => {
+          if (this.host !== host) return;
+          this.failHost("failed to load notification renderer", error);
+        });
+      })
+      .catch((error) => {
+        if (generation !== this.generation) return;
+        this.creatingHost = false;
+        this.failHost("failed to create notification window", error);
+      });
+  }
+
+  private processNext(): void {
+    const host = this.host;
+    if (!host || host.isDestroyed() || this.stage !== "ready") return;
+
+    const nextItem = this.queue.shift();
+    if (!nextItem) {
+      if (!this.warmPosition) this.destroyHost();
+      return;
+    }
+
+    this.activeItem = nextItem;
+    this.stage = "positioning";
+    const requestId = nextItem.request.id;
+
+    void host
+      .setPosition(nextItem.request.position)
+      .then(() => {
+        if (
+          this.host !== host ||
+          this.activeItem?.request.id !== requestId ||
+          this.stage !== "positioning"
+        ) {
+          return;
+        }
+
+        this.stage = "preparing";
+        this.dependencies.log(
+          `Achievement notification prepared: ${requestId} (${nextItem.request.type}, ${this.queue.length} queued)`
+        );
+        host.send("prepare-achievement-notification", nextItem.request);
+        this.startWatchdog(
+          ACHIEVEMENT_NOTIFICATION_CONTENT_READY_TIMEOUT,
+          "notification content did not become ready"
+        );
+      })
+      .catch((error) => {
+        if (this.host !== host) return;
+        this.failHost("failed to position notification window", error);
+      });
+  }
+
+  private startWatchdog(delay: number, reason: string): void {
+    this.clearWatchdog();
+    this.watchdog = this.dependencies.setTimeout(() => {
+      this.watchdog = null;
+      this.failHost(reason);
+    }, delay);
+  }
+
+  private clearWatchdog(): void {
+    if (!this.watchdog) return;
+    this.dependencies.clearTimeout(this.watchdog);
+    this.watchdog = null;
+  }
+
+  private failHost(reason: string, error?: unknown): void {
+    if (!this.host && !this.creatingHost && !this.queue.length) return;
+
+    this.dependencies.logError(
+      `Achievement notification host failed: ${reason}`,
+      ...(error === undefined ? [] : [error])
+    );
+
+    const failedItems = [
+      ...(this.activeItem ? [this.activeItem] : []),
+      ...this.queue,
+    ];
+
+    this.generation += 1;
+    this.queue = [];
+    this.activeItem = null;
+    this.creatingHost = false;
+    this.clearWatchdog();
+    this.destroyCurrentHost();
+    this.stage = "idle";
+
+    const fallbacks = new Map<
+      FallbackReference,
+      {
+        callback: NotificationFallback;
+        requests: AchievementNotificationRequest[];
+      }
+    >();
+
+    for (const item of failedItems) {
+      const callback = item.fallback.callback;
+      if (!callback || item.fallback.invoked || item.shown) {
+        continue;
+      }
+
+      const group = fallbacks.get(item.fallback) ?? {
+        callback,
+        requests: [],
+      };
+      group.requests.push(item.request);
+      fallbacks.set(item.fallback, group);
+    }
+
+    for (const [fallback, { callback, requests }] of fallbacks) {
+      fallback.invoked = true;
+      void Promise.resolve()
+        .then(() => callback(requests, fallback.soundPlayed))
+        .catch((fallbackError) => {
+          this.dependencies.logError(
+            "Achievement notification fallback failed",
+            fallbackError
+          );
+        });
+    }
+  }
+
+  private destroyHost(): void {
+    this.generation += 1;
+    this.clearWatchdog();
+    this.destroyCurrentHost();
+    this.stage = "idle";
+    this.dependencies.log("Achievement notification window destroyed");
+  }
+
+  private destroyCurrentHost(): void {
+    const host = this.host;
+    this.host = null;
+
+    if (!host || host.isDestroyed()) return;
+
+    try {
+      host.hide();
+      host.destroy();
+    } catch (error) {
+      this.dependencies.logError(
+        "Failed to destroy achievement notification window",
+        error
+      );
+    }
+  }
+}

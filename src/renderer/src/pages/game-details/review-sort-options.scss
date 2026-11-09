@@ -1,0 +1,73 @@
+@use "../../scss/globals.scss";
+
+.review-sort-options {
+  &__container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: calc(globals.$spacing-unit);
+    margin-bottom: calc(globals.$spacing-unit * 3);
+  }
+
+  &__label {
+    color: globals.$subtle-color;
+    font-size: globals.$body-font-size;
+    font-weight: 400;
+  }
+
+  &__options {
+    display: flex;
+    align-items: center;
+    gap: calc(globals.$spacing-unit);
+    font-size: globals.$body-font-size;
+    flex-wrap: wrap;
+
+    @include globals.page-max-width(900px) {
+      gap: calc(globals.$spacing-unit * 0.75);
+    }
+  }
+
+  &__option {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.4);
+    cursor: pointer;
+    padding: 4px 0;
+    font-size: globals.$body-font-size;
+    font-weight: 300;
+    transition: all ease 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+
+    &:hover:not(:disabled) {
+      color: globals.$subtle-color;
+    }
+
+    &.active {
+      color: globals.$muted-color;
+      font-weight: 500;
+    }
+
+    span {
+      display: inline-block;
+
+      @include globals.page-max-width(700px) {
+        display: none;
+      }
+    }
+
+    @include globals.page-max-width(700px) {
+      gap: 0;
+    }
+  }
+
+  &__separator {
+    color: rgba(255, 255, 255, 0.3);
+    font-size: globals.$body-font-size;
+
+    @include globals.page-max-width(700px) {
+      display: none;
+    }
+  }
+}
