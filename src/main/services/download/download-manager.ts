@@ -39,6 +39,7 @@ import {
   VikingFileApi,
   RootzApi,
   FileKeeperApi,
+  BuzzheavierApi,
 } from "../hosters";
 import { TorrentService } from "../torrent-service";
 import {
@@ -1711,6 +1712,8 @@ export class DownloadManager {
         return this.getRootzDownloadOptions(download, resumingFilename);
       case Downloader.FileKeeper:
         return this.getFileKeeperDownloadOptions(download, resumingFilename);
+      case Downloader.Buzzheavier:
+        return this.getBuzzheavierDownloadOptions(download, resumingFilename);
       case Downloader.ArchiveOrg:
         return this.getArchiveOrgDownloadOptions(download, resumingFilename);
       default:
@@ -2375,6 +2378,23 @@ export class DownloadManager {
     resumingFilename?: string
   ) {
     const downloadUrl = await RootzApi.getDownloadUrl(download.uri);
+    const filename = this.resolveFilename(
+      resumingFilename,
+      download.uri,
+      downloadUrl
+    );
+    return this.buildDownloadOptions(
+      downloadUrl,
+      download.downloadPath,
+      filename
+    );
+  }
+
+  private static async getBuzzheavierDownloadOptions(
+    download: Download,
+    resumingFilename?: string
+  ) {
+    const downloadUrl = await BuzzheavierApi.getDownloadUrl(download.uri);
     const filename = this.resolveFilename(
       resumingFilename,
       download.uri,

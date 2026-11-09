@@ -24,7 +24,8 @@ export function SettingsDebrid() {
   const { isFeatureEnabled, Feature } = useFeature();
   const isTorBoxEnabled = isFeatureEnabled(Feature.TorBox);
   const isPremiumizeEnabled = isFeatureEnabled(Feature.Premiumize);
-  const isAllDebridEnabled = isFeatureEnabled(Feature.AllDebrid);
+  // AllDebrid is the recommended provider in this fork, so always offer it.
+  const isAllDebridEnabled = true;
 
   const userPreferences = useAppSelector(
     (state) => state.userPreferences.value
