@@ -6,6 +6,7 @@ import { Worker } from "node:worker_threads";
 import { app } from "electron";
 import type { ProcessPayload } from "./download/types";
 import type { EpicProcessNode } from "./epic/managed-process-tracker";
+import type { PersonalCloudNativeModule } from "./personal-cloud/native";
 import type {
   BuildLocalGameSnapshotInput,
   BuildLocalGameSnapshotPipelineInput,
@@ -134,7 +135,7 @@ export type NativeProcessPayload = ProcessPayload &
     | "inspectionComplete"
   >;
 
-type HydraNativeModule = {
+type HydraNativeModule = PersonalCloudNativeModule & {
   torrentInitialize: (port: number) => Promise<void>;
   torrentRequest: (method: string, paramsJson: string) => Promise<string>;
   torrentShutdown: () => Promise<void>;
@@ -328,6 +329,11 @@ type PendingResolver =
   | { type: "map"; resolve: (m: SystemProcessMap | null) => void };
 
 export class NativeAddon {
+  /** Cloud Save Manager sync, the user's own Google Drive cloud saves. */
+  public static personalCloud(): PersonalCloudNativeModule {
+    return this.load();
+  }
+
   public static torrentInitialize(port: number) {
     return this.load().torrentInitialize(port);
   }

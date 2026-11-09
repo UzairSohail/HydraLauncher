@@ -5,6 +5,7 @@ mod desktop_duplication;
 mod in_place_extraction;
 mod kde_focus;
 mod linux_process;
+mod personal_cloud;
 mod screenshot_input;
 mod torrent;
 mod window_bounds;

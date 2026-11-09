@@ -20,6 +20,7 @@ import { useReviewPrompt } from "./use-review-prompt";
 import { useUserReviewStatus } from "./use-user-review-status";
 import { GameLogo } from "./game-logo";
 import { CloudSaveWidget } from "./cloud-save-v2";
+import { PersonalCloudWidget } from "./personal-cloud";
 import { getCloudSaveVisibility } from "./cloud-save-visibility";
 import { SimilarGames } from "./similar-games/similar-games";
 
@@ -91,7 +92,7 @@ export function GameDetailsContent() {
     setGameOptionsInitialCategory,
   } = useContext(gameDetailsContext);
 
-  const { userDetails } = useUserDetails();
+  const { userDetails, hasActiveSubscription } = useUserDetails();
   const { library } = useLibrary();
 
   const { getGameArtifacts } = useContext(cloudSyncContext);
@@ -468,26 +469,35 @@ export function GameDetailsContent() {
                   </button>
                 )}
 
-                {game && cloudSaveVisibility?.hero === "legacy" && (
-                  <button
-                    type="button"
-                    className="game-details__cloud-sync-button"
-                    onClick={handleLegacyCloudSaveButtonClick}
-                  >
-                    <div className="game-details__cloud-icon-container">
-                      <img
-                        src={cloudIconAnimated}
-                        alt=""
-                        className="game-details__cloud-icon"
-                      />
-                    </div>
-                    {t("cloud_save")}
-                  </button>
-                )}
+                {game &&
+                  hasActiveSubscription &&
+                  cloudSaveVisibility?.hero === "legacy" && (
+                    <button
+                      type="button"
+                      className="game-details__cloud-sync-button"
+                      onClick={handleLegacyCloudSaveButtonClick}
+                    >
+                      <div className="game-details__cloud-icon-container">
+                        <img
+                          src={cloudIconAnimated}
+                          alt=""
+                          className="game-details__cloud-icon"
+                        />
+                      </div>
+                      {t("cloud_save")}
+                    </button>
+                  )}
 
-                {game && objectId && cloudSaveVisibility?.hero === "v2" && (
-                  <CloudSaveWidget />
-                )}
+                {game &&
+                  objectId &&
+                  hasActiveSubscription &&
+                  cloudSaveVisibility?.hero === "v2" && <CloudSaveWidget />}
+
+                {/* Cloud saves through the user's own Google Drive. */}
+                {game &&
+                  objectId &&
+                  !hasActiveSubscription &&
+                  cloudSaveVisibility?.hero && <PersonalCloudWidget />}
               </div>
             </div>
 

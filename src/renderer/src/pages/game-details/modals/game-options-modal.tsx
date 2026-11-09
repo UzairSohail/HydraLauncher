@@ -74,6 +74,7 @@ import { DownloadsSettingsSection } from "./game-options-modal/downloads-section
 import { DangerZoneSection } from "./game-options-modal/danger-zone-section";
 import { HydraCloudLegacySettingsSection } from "./game-options-modal/hydra-cloud-section";
 import { HydraCloudV2SettingsSection } from "./game-options-modal/hydra-cloud-v2-section";
+import { PersonalCloudPanel } from "../personal-cloud";
 import { EpicCloudSettingsSection } from "./game-options-modal/epic-cloud-section";
 import type { GameSettingsCategoryId } from "./game-options-modal/types";
 import { CreateSteamShortcutModal } from "./create-steam-shortcut-modal";
@@ -106,6 +107,7 @@ export function GameOptionsModal({
   initialCategory,
 }: Readonly<GameOptionsModalProps>) {
   const { t } = useTranslation("game_details");
+  const { t: tPersonalCloud } = useTranslation("personal_cloud");
 
   const { showSuccessToast, showErrorToast } = useToast();
   const { updateLibrary } = useLibrary();
@@ -1006,6 +1008,11 @@ export function GameOptionsModal({
         label: t("settings_category_customization"),
         icon: <ImageIcon size={16} />,
       },
+      {
+        id: "personal_cloud" as const,
+        label: tPersonalCloud("title"),
+        icon: <CloudIcon size={16} />,
+      },
       ...getCloudGameSettingsCategories(
         {
           cloudSaveAccessAction,
@@ -1067,6 +1074,7 @@ export function GameOptionsModal({
       showDownloadSettings,
       shouldShowWinePrefixConfiguration,
       t,
+      tPersonalCloud,
     ]
   );
 
@@ -1407,6 +1415,21 @@ export function GameOptionsModal({
                 shopDetails={shopDetails}
                 onGameUpdated={updateGame}
               />
+            )}
+            {selectedCategory === "personal_cloud" && (
+              <div className="game-options-modal__cloud-panel">
+                <div className="game-options-modal__panel-header">
+                  <h2>{tPersonalCloud("title")}</h2>
+                </div>
+                <PersonalCloudPanel
+                  shop={game.shop}
+                  objectId={game.objectId}
+                  executablePath={game.executablePath}
+                  onSelectExecutable={() =>
+                    setSelectedCategory(isLaunchbox ? "general" : "locations")
+                  }
+                />
+              </div>
             )}
             {selectedCategory === "hydra_cloud" && showCloudSaveV2Settings && (
               <HydraCloudV2SettingsSection

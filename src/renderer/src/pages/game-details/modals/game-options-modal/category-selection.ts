@@ -37,7 +37,9 @@ export const getCloudGameSettingsCategories = (
   legacyPurpose: "active" | "archive"
 ): GameSettingsCategoryId[] => {
   const categories: GameSettingsCategoryId[] = [];
-  const showHydra = availability.cloudSaveAccessAction !== "sign-in";
+  // Cloud saves go through the user's own Google Drive instead, so Hydra Cloud
+  // only shows for an account that already has it, never as an upsell.
+  const showHydra = availability.cloudSaveAccessAction === "open";
   if (showHydra && availability.showCloudSaveV2Settings) {
     categories.push("hydra_cloud");
   }

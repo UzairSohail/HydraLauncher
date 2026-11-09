@@ -1,0 +1,104 @@
+@use "../../../scss/globals.scss";
+
+.personal-cloud {
+  display: flex;
+  flex-direction: column;
+  gap: calc(globals.$spacing-unit * 2);
+
+  &__note {
+    margin: 0;
+    color: globals.$muted-color;
+    font-size: globals.$small-font-size;
+    line-height: 1.5;
+  }
+
+  &__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: globals.$spacing-unit;
+  }
+
+  &__summary {
+    display: flex;
+    flex-direction: column;
+    gap: calc(globals.$spacing-unit / 2);
+  }
+
+  &__status {
+    font-weight: 600;
+
+    &--up_to_date {
+      color: globals.$success-color;
+    }
+
+    &--upload_waiting,
+    &--cloud_newer,
+    &--offline {
+      color: globals.$warning-color;
+    }
+
+    &--both_changed {
+      color: globals.$error-color;
+    }
+  }
+
+  &__meta {
+    color: globals.$muted-color;
+    font-size: globals.$small-font-size;
+    word-break: break-word;
+  }
+
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: globals.$spacing-unit;
+  }
+
+  &__heading {
+    margin: 0;
+    font-size: globals.$body-font-size;
+  }
+
+  &__versions {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: globals.$spacing-unit;
+  }
+
+  &__version {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: globals.$spacing-unit;
+    padding: globals.$spacing-unit calc(globals.$spacing-unit * 1.5);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  &__version-text {
+    display: flex;
+    align-items: center;
+    gap: globals.$spacing-unit;
+    font-size: globals.$small-font-size;
+  }
+
+  &__badge {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: globals.$success-color;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  &__version-actions {
+    display: flex;
+    gap: globals.$spacing-unit;
+  }
+}

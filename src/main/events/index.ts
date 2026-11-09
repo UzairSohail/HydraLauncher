@@ -14,6 +14,7 @@ import "./big-picture";
 import "./catalogue";
 import "./chat";
 import "./cloud-save";
+import "./personal-cloud";
 import "./connectivity";
 import "./download-sources";
 import "./friends";

@@ -12,6 +12,7 @@ import type { Game, UserPreferences } from "@types";
 import axios from "axios";
 import { db, gamesSublevel, levelKeys } from "@main/level";
 import { CloudSync } from "./cloud-sync";
+import { PersonalCloud } from "./personal-cloud";
 import { logger, networkLogger } from "./logger";
 import { PowerSaveBlockerManager } from "./power-save-blocker";
 import path from "node:path";
@@ -530,6 +531,9 @@ async function onOpenGame(game: Game, matchedPath: string) {
 
   void onScreenshotGameStarted(gameKey);
 
+  // Epic manages its own cloud saves for games it installed.
+  if (!managedEpicSession) void PersonalCloud.onGameStarted(game);
+
   // On Linux, keep the launcher visible briefly and let it auto-close itself.
   if (process.platform !== "linux") {
     WindowManager.closeGameLauncherWindow();
@@ -761,6 +765,8 @@ const onCloseGame = (game: Game, options: { isShutdown?: boolean } = {}) => {
   void persistGamePlaytime(gameKey, updatedGame, authContext, delta);
 
   if (!options.isShutdown) onScreenshotGameClosed(gameKey);
+
+  if (!gamePlaytime.managedEpicSession) void PersonalCloud.onGameClosed(game);
 
   if (game.shop === "custom") return;
 

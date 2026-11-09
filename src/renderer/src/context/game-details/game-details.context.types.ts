@@ -13,6 +13,7 @@ export type GameOptionsCategoryId =
   | "general"
   | "locations"
   | "assets"
+  | "personal_cloud"
   | "hydra_cloud"
   | "epic_cloud"
   | "hydra_cloud_legacy"
