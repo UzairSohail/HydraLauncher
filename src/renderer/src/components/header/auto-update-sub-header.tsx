@@ -6,7 +6,7 @@ import "./auto-update-header.scss";
 import type { AppUpdaterEvent } from "@types";
 
 export const releasesPageUrl =
-  "https://github.com/UzairSohail/HydraLauncher/releases/latest";
+  "https://github.com/UzairSohail/NachoLauncher/releases/latest";
 
 export function AutoUpdateSubHeader() {
   const [isReadyToInstall, setIsReadyToInstall] = useState(false);

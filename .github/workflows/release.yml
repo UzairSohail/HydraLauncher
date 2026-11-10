@@ -29,15 +29,28 @@ jobs:
 
     outputs:
       tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: Check out Git repository
         uses: actions/checkout@v4
 
-      - name: Work out the release tag
+      # Every build gets a higher version than the last one, so installed
+      # copies see it as an update: 4.4.0 becomes 4.4.<run number>, and an
+      # upstream bump to 4.4.1 becomes 4.4.(1000 + run number).
+      - name: Work out the release version
         id: version
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
-          version="$(node -p "require('./package.json').version")"
+          base="$(node -p "require('./package.json').version")"
+          version="$(node -e '
+            const [maj, min, patch] = process.argv[1].split("-")[0].split(".").map(Number);
+            const run = Number(process.argv[2]);
+            console.log(`${maj}.${min}.${patch * 1000 + run}`);
+          ' "$base" "$RUN_NUMBER")"
+          echo "Building $version (package.json says $base)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
 
       # A rebuild of the same version replaces that release.
@@ -66,7 +79,9 @@ jobs:
       ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
       # Built into hydra-native (via Cloud Save Manager) so Google sign-in for
       # cloud saves and settings sync works without a local client.json.
-      # Anyone with a build can extract these, so keep the repo private.
+      # Anyone with a build can extract these. Google treats desktop app
+      # secrets as public, so this is fine; sign-in still needs each user's
+      # own Google account.
       CSM_GOOGLE_CLIENT_ID: ${{ secrets.CSM_GOOGLE_CLIENT_ID }}
       CSM_GOOGLE_CLIENT_SECRET: ${{ secrets.CSM_GOOGLE_CLIENT_SECRET }}
 
@@ -85,6 +100,20 @@ jobs:
         with:
           node-version: 22.21.0
           cache: "yarn"
+
+      # The installer, latest.yml and the app's own version all come from
+      # package.json, so stamp the release version in before building.
+      - name: Set the build version
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            pkg.version = process.env.VERSION;
+            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+          '
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable

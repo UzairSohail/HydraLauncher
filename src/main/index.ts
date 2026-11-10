@@ -73,7 +73,7 @@ const { autoUpdater } = updater;
 autoUpdater.setFeedURL({
   provider: "github",
   owner: "UzairSohail",
-  repo: "HydraLauncher",
+  repo: "NachoLauncher",
 });
 
 autoUpdater.logger = logger;

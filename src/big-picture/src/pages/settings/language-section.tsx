@@ -18,7 +18,7 @@ interface LanguageSectionProps {
   className?: string;
 }
 
-const GITHUB_REPOSITORY_URL = "https://github.com/UzairSohail/HydraLauncher";
+const GITHUB_REPOSITORY_URL = "https://github.com/UzairSohail/NachoLauncher";
 
 export function LanguageSection({ className }: Readonly<LanguageSectionProps>) {
   const userPreferences = useUserPreferences();
