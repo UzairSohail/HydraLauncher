@@ -13,6 +13,7 @@ import type {
   PersonalCloudSyncResult,
 } from "@types";
 
+import { isGameRunning } from "../game-running-state";
 import { logger } from "../logger";
 import { NativeAddon } from "../native-addon";
 import { Wine } from "../wine";
@@ -41,6 +42,7 @@ export class PersonalCloud {
   private static links = new Map<string, { exePath: string; gameId: string }>();
   private static startedAt = new Map<string, number>();
   private static signingIn: Promise<PersonalCloudStatus> | null = null;
+  private static pulling = new Set<string>();
 
   public static status(): Promise<PersonalCloudStatus> {
     return native().personalCloudStatus();
@@ -115,10 +117,30 @@ export class PersonalCloud {
     const game = await this.getGame(shop, objectId);
     const link = await this.linkGame(game);
     if (!link) return { status, info: null };
-    return {
-      status,
-      info: await native().personalCloudGameInfo(link.gameId),
-    };
+    const info = await native().personalCloudGameInfo(link.gameId);
+    if (info.status === "cloud_newer" && !status.paused) {
+      void this.pullNewerSave(game);
+    }
+    return { status, info };
+  }
+
+  /**
+   * Downloads a newer cloud save as soon as Nacho notices it, so the game is
+   * already up to date before it's launched. Never while the game is running.
+   */
+  private static async pullNewerSave(game: Game) {
+    const key = levelKeys.game(game.shop, game.objectId);
+    if (this.pulling.has(key) || isGameRunning(game.objectId, game.shop)) {
+      return;
+    }
+    this.pulling.add(key);
+    try {
+      await this.runSync(game, "auto", (gameId) =>
+        native().personalCloudSync(gameId, false)
+      );
+    } finally {
+      this.pulling.delete(key);
+    }
   }
 
   private static notify(event: PersonalCloudSyncEvent) {
