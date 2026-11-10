@@ -5,6 +5,7 @@ import {
   CloudArrowUpIcon,
   FolderOpenIcon,
   ArrowsClockwiseIcon,
+  CircleNotchIcon,
 } from "@phosphor-icons/react";
 
 import { Button, ConfirmationModal } from "@renderer/components";
@@ -88,7 +89,14 @@ export function PersonalCloudPanel({
   const confirm = (pending: PendingConfirmation) => setConfirmation(pending);
 
   const renderBody = () => {
-    if (!state && isLoading) return null;
+    if (!state && isLoading) {
+      return (
+        <p className="personal-cloud__note personal-cloud__loading">
+          <CircleNotchIcon size={16} className="personal-cloud__spinner" />
+          {t("checking")}
+        </p>
+      );
+    }
     if (error && !state) {
       return <p className="personal-cloud__note">{error}</p>;
     }
