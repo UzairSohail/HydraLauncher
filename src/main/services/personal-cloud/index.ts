@@ -63,6 +63,16 @@ export class PersonalCloud {
     return this.signingIn;
   }
 
+  /** True when cloud saves are signed in and not paused. Never throws. */
+  public static async isSyncing() {
+    try {
+      const status = await this.status();
+      return status.signedIn && !status.paused;
+    } catch {
+      return false;
+    }
+  }
+
   public static async setPaused(paused: boolean) {
     await native().personalCloudSetPaused(paused);
     return this.status();
