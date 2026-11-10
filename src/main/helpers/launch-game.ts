@@ -788,7 +788,11 @@ const launchGameWithCloudSaveChecks = async (
       launchGameRecord,
       objectId,
       shop,
-      shouldRunV2AutomaticSync || managedEpic
+      shouldRunV2AutomaticSync ||
+        managedEpic ||
+        // Cloud Save Manager needs the prefix's drive_c to put a cloud save
+        // in place, so a game's first launch creates the prefix up front.
+        (await PersonalCloud.isSyncing())
     );
   }
   const {
