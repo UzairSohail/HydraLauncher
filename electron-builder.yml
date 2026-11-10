@@ -141,6 +141,6 @@ npmRebuild: false
 publish:
   provider: github
   owner: UzairSohail
-  repo: HydraLauncher
+  repo: NachoLauncher
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
