@@ -8,6 +8,7 @@ import type {
   GameShop,
   PersonalCloudSyncEvent,
   SettingsSyncStatus,
+  AchievementSyncStatus,
   DownloadProgress,
   UserPreferences,
   ScreenshotInputStatus,
@@ -406,6 +407,21 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.on("on-settings-sync-status", listener);
     return () =>
       ipcRenderer.removeListener("on-settings-sync-status", listener);
+  },
+  /* Achievement sync (Google Drive) */
+  getAchievementSyncStatus: () =>
+    ipcRenderer.invoke("getAchievementSyncStatus"),
+  syncAchievementsNow: () => ipcRenderer.invoke("syncAchievementsNow"),
+  onAchievementSyncStatus: (
+    callback: (status: AchievementSyncStatus) => void
+  ) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      payload: AchievementSyncStatus
+    ) => callback(payload);
+    ipcRenderer.on("on-achievement-sync-status", listener);
+    return () =>
+      ipcRenderer.removeListener("on-achievement-sync-status", listener);
   },
   setCloudSaveAutomaticSyncEnabled: (
     objectId: string,

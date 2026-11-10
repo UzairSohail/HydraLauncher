@@ -14,6 +14,7 @@ import { CombinedAchievementsRequests } from "@main/services/achievements/combin
 import { AchievementSouvenirStore } from "@main/services/achievements/achievement-souvenir-store";
 import { fetchRemoteUserGameAchievements } from "@main/services/achievements/get-achievement-souvenirs";
 import { mergeUnlockedAchievementLists } from "@main/services/achievements/merge-unlocked-achievements";
+import { SyncedUnlocksStore } from "@main/services/achievement-sync/synced-unlocks-store";
 import {
   createCombinedDefinitionLookup,
   presentCombinedAchievements,
@@ -91,9 +92,14 @@ export const getUnlockedAchievements = async (
   const unlockedAchievements =
     shop === "epic" && !("unavailable" in remote)
       ? remote.unlocked
-      : mergeUnlockedAchievementLists(
-          remote.unlocked,
-          AchievementMemoryStore.get(shop, objectId)?.unlockedAchievements ?? []
+      : SyncedUnlocksStore.withSynced(
+          shop,
+          objectId,
+          mergeUnlockedAchievementLists(
+            remote.unlocked,
+            AchievementMemoryStore.get(shop, objectId)?.unlockedAchievements ??
+              []
+          )
         );
 
   const stored = AchievementMemoryStore.get(shop, objectId);
@@ -164,8 +170,12 @@ export const getUnlockedAchievements = async (
       return presentCombinedAchievements(
         combined,
         (sourceShop, sourceObjectId) =>
-          AchievementMemoryStore.get(sourceShop, sourceObjectId)
-            ?.unlockedAchievements ?? [],
+          SyncedUnlocksStore.withSynced(
+            sourceShop,
+            sourceObjectId,
+            AchievementMemoryStore.get(sourceShop, sourceObjectId)
+              ?.unlockedAchievements ?? []
+          ),
         createCombinedDefinitionLookup((sourceShop, sourceObjectId) =>
           sourceShop === shop && sourceObjectId === objectId
             ? achievementsData

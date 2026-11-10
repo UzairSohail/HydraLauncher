@@ -30,3 +30,13 @@ export interface SettingsSyncStatus {
   lastChangeFromDevice: string | null;
   lastError: SettingsSyncError | null;
 }
+
+/** Achievement sync through Google Drive, shown on game pages. */
+export interface AchievementSyncStatus {
+  signedIn: boolean;
+  syncing: boolean;
+  lastSyncedAt: number | null;
+  /** This device has unlocks that haven't reached Drive yet. */
+  pendingUpload: boolean;
+  lastError: SettingsSyncError | null;
+}

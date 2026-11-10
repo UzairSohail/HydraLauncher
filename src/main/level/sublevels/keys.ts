@@ -19,6 +19,7 @@ export const levelKeys = {
   userPreferenceSecrets: "userPreferenceSecrets", // API keys and tokens, encrypted with safeStorage
   settingsSync: "settingsSync", // Settings sync state: device id, switch, last sync, entries
   settingsSyncKey: "settingsSyncKey", // Settings sync key, encrypted with safeStorage
+  achievementSync: "achievementSync", // Achievement sync through Google Drive: device id, unlocks from all devices
   language: "language",
   screenState: "screenState",
   rpcPassword: "rpcPassword",

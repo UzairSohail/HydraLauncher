@@ -127,6 +127,11 @@ const load = (options: {
         };
       },
     },
+    "@main/services/achievement-sync/synced-unlocks-store": {
+      SyncedUnlocksStore: {
+        withSynced: (_shop: string, _objectId: string, list: unknown[]) => list,
+      },
+    },
     "@main/services/achievements/merge-unlocked-achievements": {
       mergeUnlockedAchievementLists: (remote: unknown[]) => remote,
     },
