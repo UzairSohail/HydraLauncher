@@ -13,7 +13,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useFocusLayerId, useFocusRegionId } from "../../context";
+import { useFocusLayerId } from "../../context";
 import { FocusItem } from "../focus-item";
 import { HorizontalFocusGroup } from "../horizontal-focus-group";
 import { useGamepad } from "../../../hooks";
@@ -24,6 +24,7 @@ import {
 } from "../../../services";
 import { useNavigationIsFocused, useNavigationStore } from "../../../stores";
 import { GamepadButtonType } from "../../../types";
+import { BIG_PICTURE_SIDEBAR_REGION_ID } from "../../../layout/navigation";
 
 export interface TabsItem<TValue extends string = string> {
   id?: string;
@@ -269,7 +270,6 @@ export function Tabs<TValue extends string = string>({
 }: Readonly<TabsProps<TValue>>) {
   const TAB_SCROLL_EPSILON_PX = 1;
   const generatedId = useId();
-  const parentRegionId = useFocusRegionId();
   const layerId = useFocusLayerId();
   const tabsViewportRef = useRef<HTMLDivElement | null>(null);
   const tabListRef = useRef<HTMLDivElement | null>(null);
@@ -404,7 +404,7 @@ export function Tabs<TValue extends string = string>({
       return true;
     }
 
-    if (itemsFocusable || !currentFocusId || !parentRegionId) {
+    if (!currentFocusId) {
       return false;
     }
 
@@ -414,15 +414,19 @@ export function Tabs<TValue extends string = string>({
       return false;
     }
 
-    return isRegionWithinParentRegion(focusedNode.regionId, parentRegionId);
+    // The LB/RB badges promise tab switching anywhere on the page, not only
+    // while the tab row itself is focused. The main sidebar keeps its own
+    // controls.
+    return !isRegionWithinParentRegion(
+      focusedNode.regionId,
+      BIG_PICTURE_SIDEBAR_REGION_ID
+    );
   }, [
     currentFocusId,
     isCurrentFocusInsideTabList,
     isRegionWithinParentRegion,
-    itemsFocusable,
     layerId,
     nodes,
-    parentRegionId,
   ]);
 
   useEffect(() => {

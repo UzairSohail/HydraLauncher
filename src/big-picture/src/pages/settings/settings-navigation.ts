@@ -41,6 +41,12 @@ export const BIG_PICTURE_DIAGNOSTICS_POSITION_SELECT_ID =
   "big-picture-diagnostics-position-select";
 export const COMPATIBILITY_SECTION_REGION_ID = "compatibility-section-region";
 export const INTEGRATIONS_SECTION_REGION_ID = "integrations-section-region";
+export const GOOGLE_DRIVE_SECTION_REGION_ID =
+  "integrations-google-drive-region";
+export const GOOGLE_DRIVE_CLOUD_SAVES_BUTTON_ID =
+  "integrations-google-drive-cloud-saves";
+export const GOOGLE_DRIVE_SYNC_CHECKBOX_ID = "integrations-google-drive-sync";
+export const GOOGLE_DRIVE_SYNC_BUTTON_ID = "integrations-google-drive-sync-now";
 export const ACCOUNT_PRIVACY_PRIVACY_SELECT_ID =
   "account-privacy-profile-visibility";
 export const ACCOUNT_PRIVACY_CLOUD_GIFTS_CHECKBOX_ID =
@@ -77,6 +83,7 @@ export const EMULATION_OVERVIEW_CARD_FOCUS_IDS = {
   ps1: "emulation-overview-ps1-card",
   ps2: "emulation-overview-ps2-card",
   ps3: "emulation-overview-ps3-card",
+  ps4: "emulation-overview-ps4-card",
   psp: "emulation-overview-psp-card",
   dolphin: "emulation-overview-dolphin-card",
   retroarch: "emulation-overview-retroarch-card",
