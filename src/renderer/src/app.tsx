@@ -52,6 +52,7 @@ import { useMissingScreenshotsToast } from "./hooks/use-missing-screenshots-toas
 import { useScreenshotUploadFailureToast } from "./hooks/use-screenshot-upload-failure-toast";
 import { LeaderboardNotificationLayer } from "./components/leaderboard-notification/leaderboard-notification-layer";
 import { playMessageSound } from "./pages/chat-window/chat-sounds";
+import { usePersonalCloudSyncToasts } from "./pages/game-details/personal-cloud";
 
 import type { UserPreferences } from "@types";
 import "./app.scss";
@@ -122,6 +123,7 @@ export function App() {
   const { showSuccessToast, showErrorToast, showWarningToast } = useToast();
   useMissingScreenshotsToast();
   useScreenshotUploadFailureToast();
+  usePersonalCloudSyncToasts();
 
   const [showArchiveDeletionModal, setShowArchiveDeletionModal] =
     useState(false);

@@ -21,6 +21,7 @@ import { WindowManager } from "../window-manager";
 import {
   getPersonalCloudLinkInput,
   PRE_LAUNCH_SYNC_TIMEOUT_MS,
+  PRE_LAUNCH_TIMEOUT_ERROR,
 } from "./policy";
 
 export * from "./policy";
@@ -159,6 +160,13 @@ export class PersonalCloud {
         logger.warn("[Personal Cloud] Pre-launch sync is slow, starting game", {
           shop: game.shop,
           objectId: game.objectId,
+        });
+        this.notify({
+          shop: game.shop,
+          objectId: game.objectId,
+          phase: "pre-launch",
+          result: null,
+          error: PRE_LAUNCH_TIMEOUT_ERROR,
         });
         resolve(null);
       }, PRE_LAUNCH_SYNC_TIMEOUT_MS);

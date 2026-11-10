@@ -3,6 +3,9 @@ import type { Game, PersonalCloudLinkInput } from "@types";
 /** A slow connection never holds a game back for longer than this. */
 export const PRE_LAUNCH_SYNC_TIMEOUT_MS = 60_000;
 
+/** Sent as a sync event's error when the game started before the sync finished. */
+export const PRE_LAUNCH_TIMEOUT_ERROR = "pre_launch_timeout";
+
 export interface PersonalCloudPlatform {
   platform: NodeJS.Platform;
   /** Hydra's Wine prefix for the game on Linux, the folder holding drive_c. */

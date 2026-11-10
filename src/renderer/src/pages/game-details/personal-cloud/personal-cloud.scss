@@ -12,6 +12,16 @@
     line-height: 1.5;
   }
 
+  &__loading {
+    display: flex;
+    align-items: center;
+    gap: globals.$spacing-unit;
+  }
+
+  &__spinner {
+    animation: personal-cloud-spin 1s linear infinite;
+  }
+
   &__empty {
     display: flex;
     flex-direction: column;
@@ -100,5 +110,11 @@
   &__version-actions {
     display: flex;
     gap: globals.$spacing-unit;
+  }
+}
+
+@keyframes personal-cloud-spin {
+  to {
+    transform: rotate(360deg);
   }
 }

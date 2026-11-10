@@ -10,9 +10,11 @@ export interface PersonalCloudPresentation {
 /** What the game page button shows for a game's cloud save state. */
 export const getPersonalCloudPresentation = (
   state: PersonalCloudGameState | null,
-  isBusy: boolean
+  isBusy: boolean,
+  isLoading = false
 ): PersonalCloudPresentation => {
   if (isBusy) return { labelKey: "syncing", tone: "neutral" };
+  if (!state && isLoading) return { labelKey: "checking", tone: "neutral" };
   if (!state?.status.signedIn)
     return { labelKey: "widget_off", tone: "neutral" };
   if (state.status.paused) return { labelKey: "paused", tone: "outdated" };

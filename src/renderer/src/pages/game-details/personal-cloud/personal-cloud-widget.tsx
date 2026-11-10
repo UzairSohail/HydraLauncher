@@ -29,12 +29,12 @@ export function PersonalCloudWidget() {
     setGameOptionsInitialCategory,
     setShowGameOptionsModal,
   } = useContext(gameDetailsContext);
-  const { state, isBusy } = usePersonalCloudGame(
+  const { state, isBusy, isLoading } = usePersonalCloudGame(
     shop,
     objectId,
     game?.executablePath
   );
-  const presentation = getPersonalCloudPresentation(state, isBusy);
+  const presentation = getPersonalCloudPresentation(state, isBusy, isLoading);
 
   return (
     <button
@@ -47,7 +47,11 @@ export function PersonalCloudWidget() {
       title={t("title")}
     >
       <CloudSaveStatusIcon
-        icon={isBusy ? "spinner" : iconByTone[presentation.tone]}
+        icon={
+          isBusy || (!state && isLoading)
+            ? "spinner"
+            : iconByTone[presentation.tone]
+        }
       />
       {t(presentation.labelKey)}
     </button>

@@ -3641,6 +3641,8 @@
     "local_files": "{{count}} files, {{size}} on this device",
     "sync_now": "Sync now",
     "syncing": "Syncing…",
+    "checking": "Checking cloud saves…",
+    "pre_launch_slow": "Google Drive took too long, so the game started without downloading the newest save.",
     "force_upload": "Upload this device's save",
     "force_upload_confirm": "Make this device's save current on every device? The cloud save stays in version history.",
     "force_download": "Download the cloud save",
