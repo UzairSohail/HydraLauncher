@@ -26,6 +26,7 @@ interface PersonalCloudPanelProps {
 interface PendingConfirmation {
   description: string;
   action: () => Promise<unknown>;
+  successMessage?: string;
   danger?: boolean;
 }
 
@@ -37,7 +38,7 @@ export function PersonalCloudPanel({
 }: Readonly<PersonalCloudPanelProps>) {
   const { t } = useTranslation("personal_cloud");
   const { formatDateTime } = useDate();
-  const { showErrorToast } = useToast();
+  const { showErrorToast, showSuccessToast } = useToast();
   const { state, isLoading, isBusy, error, run } = usePersonalCloudGame(
     shop,
     objectId,
@@ -49,9 +50,13 @@ export function PersonalCloudPanel({
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [unclear, setUnclear] = useState<string[]>([]);
 
-  const perform = async (action: () => Promise<unknown>) => {
+  const perform = async (
+    action: () => Promise<unknown>,
+    successMessage?: string
+  ) => {
     try {
       await run(action);
+      if (successMessage) showSuccessToast(successMessage);
     } catch (err) {
       showErrorToast(
         t("action_failed", {
@@ -183,6 +188,7 @@ export function PersonalCloudPanel({
                 description: t("force_upload_confirm"),
                 action: () =>
                   window.electron.forcePersonalCloudUpload(shop, objectId),
+                successMessage: t("force_upload_done"),
               })
             }
           >
@@ -197,6 +203,7 @@ export function PersonalCloudPanel({
                 description: t("force_download_confirm"),
                 action: () =>
                   window.electron.forcePersonalCloudDownload(shop, objectId),
+                successMessage: t("force_download_done"),
               })
             }
           >
@@ -238,6 +245,9 @@ export function PersonalCloudPanel({
                       onClick={() =>
                         confirm({
                           description: t("restore_confirm"),
+                          successMessage: t("restore_done", {
+                            date: formatDateTime(version.createdMs),
+                          }),
                           action: () =>
                             window.electron.restorePersonalCloudVersion(
                               shop,
@@ -294,7 +304,7 @@ export function PersonalCloudPanel({
         onConfirm={() => {
           const pending = confirmation;
           setConfirmation(null);
-          if (pending) void perform(pending.action);
+          if (pending) void perform(pending.action, pending.successMessage);
         }}
       />
     </div>

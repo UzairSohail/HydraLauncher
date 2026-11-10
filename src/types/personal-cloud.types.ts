@@ -95,7 +95,7 @@ export interface PersonalCloudGameState {
 export interface PersonalCloudSyncEvent {
   shop: GameShop;
   objectId: string;
-  phase: "pre-launch" | "post-exit" | "manual";
+  phase: "pre-launch" | "post-exit" | "manual" | "auto";
   result: PersonalCloudSyncResult | null;
   error: string | null;
 }
