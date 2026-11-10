@@ -13,9 +13,11 @@ import { useFeature } from "../../hooks";
 import type { FocusOverrideTarget } from "../../services";
 import {
   getIntegrationProviderCheckboxFocusId,
+  GOOGLE_DRIVE_CLOUD_SAVES_BUTTON_ID,
   SETTINGS_HEADER_RETURN_TARGET,
   type IntegrationProviderId,
 } from "./settings-navigation";
+import { GoogleDriveSection } from "./google-drive-section";
 import {
   IntegrationProviderSection,
   type IntegrationProviderConfig,
@@ -51,6 +53,20 @@ const TORBOX_API_TOKEN_URL = "https://torbox.app/settings";
 
 const INTEGRATION_PROVIDERS: IntegrationProviderDefinition[] = [
   {
+    id: "all-debrid",
+    title: "AllDebrid",
+    description:
+      "Recommended. AllDebrid is an unrestricted downloader service for premium links and magnet downloads.",
+    checkboxLabel: "Enable AllDebrid",
+    tokenPreferenceKey: "allDebridApiToken",
+    tokenUrl: ALL_DEBRID_API_TOKEN_URL,
+    authenticate: (apiToken) =>
+      globalThis.window.electron.authenticateAllDebrid(apiToken),
+    getSuccessIdentity: (user) => {
+      return (user as AllDebridUser).username ?? null;
+    },
+  },
+  {
     id: "real-debrid",
     title: "Real-Debrid",
     description:
@@ -84,21 +100,6 @@ const INTEGRATION_PROVIDERS: IntegrationProviderDefinition[] = [
       globalThis.window.electron.authenticatePremiumize(apiToken),
     getSuccessIdentity: (user) => {
       return (user as PremiumizeUser).customer_id ?? null;
-    },
-  },
-  {
-    id: "all-debrid",
-    title: "AllDebrid",
-    description:
-      "AllDebrid is an unrestricted downloader service for premium links and magnet downloads.",
-    checkboxLabel: "Enable AllDebrid",
-    tokenPreferenceKey: "allDebridApiToken",
-    tokenUrl: ALL_DEBRID_API_TOKEN_URL,
-    featureFlag: "ALLDEBRID",
-    authenticate: (apiToken) =>
-      globalThis.window.electron.authenticateAllDebrid(apiToken),
-    getSuccessIdentity: (user) => {
-      return (user as AllDebridUser).username ?? null;
     },
   },
   {
@@ -142,6 +143,20 @@ export function IntegrationsSettingsSection({
           : "integrations-settings-section"
       }
     >
+      <GoogleDriveSection
+        upTarget={SETTINGS_HEADER_RETURN_TARGET}
+        downTarget={
+          visibleProviders[0]
+            ? {
+                type: "item",
+                itemId: getIntegrationProviderCheckboxFocusId(
+                  visibleProviders[0].id as IntegrationProviderId
+                ),
+              }
+            : { type: "block" }
+        }
+      />
+
       {visibleProviders.map((provider, index) => {
         const previousProvider = visibleProviders[index - 1];
         const nextProvider = visibleProviders[index + 1];
@@ -153,7 +168,10 @@ export function IntegrationsSettingsSection({
                 previousProvider.id as IntegrationProviderId
               ),
             }
-          : SETTINGS_HEADER_RETURN_TARGET;
+          : {
+              type: "item",
+              itemId: GOOGLE_DRIVE_CLOUD_SAVES_BUTTON_ID,
+            };
 
         const downTarget: FocusOverrideTarget = nextProvider
           ? {

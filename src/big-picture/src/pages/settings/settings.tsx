@@ -44,7 +44,7 @@ import {
   DOWNLOADS_SOURCES_SECTION_REGION_ID,
   DOWNLOAD_DIRECTORIES_DEFAULT_SELECT_ID,
   EMULATION_OVERVIEW_CARD_FOCUS_IDS,
-  getIntegrationProviderCheckboxFocusId,
+  GOOGLE_DRIVE_CLOUD_SAVES_BUTTON_ID,
   NOTIFICATIONS_LIBRARY_ITEM_FOCUS_IDS,
 } from "./settings-navigation";
 
@@ -344,7 +344,7 @@ export default function Settings() {
       case "integrations":
         return {
           type: "item",
-          itemId: getIntegrationProviderCheckboxFocusId("real-debrid"),
+          itemId: GOOGLE_DRIVE_CLOUD_SAVES_BUTTON_ID,
         };
       case "compatibility":
         return {
