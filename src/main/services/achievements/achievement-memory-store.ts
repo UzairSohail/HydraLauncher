@@ -1,4 +1,5 @@
 import type { GameShop, SteamAchievement, UnlockedAchievement } from "@types";
+import { SyncedUnlocksStore } from "../achievement-sync/synced-unlocks-store.js";
 
 export type AchievementMemoryEntry = {
   achievements: SteamAchievement[];
@@ -77,7 +78,11 @@ export const resolveUnlockedAchievementCount = (
   );
   const hasCatalogue = validNames.size > 0;
   const localCount =
-    achievements?.unlockedAchievements.filter((unlocked) => {
+    SyncedUnlocksStore.withSynced(
+      shop,
+      objectId,
+      achievements?.unlockedAchievements ?? []
+    ).filter((unlocked) => {
       if (unlocked.unlockTime <= 0) return false;
       if (!hasCatalogue) return true;
       return validNames.has((unlocked.name ?? "").toUpperCase());

@@ -29,6 +29,7 @@ import { PendingGroupedSouvenirStore } from "./grouped-souvenir-store";
 import { groupedSouvenirWorker } from "./grouped-souvenir-worker";
 import { launchedGamePids } from "../launched-game-pids";
 import { Wine } from "../wine";
+import { AchievementSync, SyncedUnlocksStore } from "../achievement-sync";
 
 interface MergeAchievementsOptions {
   skipSouvenirCapture?: boolean;
@@ -202,7 +203,13 @@ const mergeAchievementsLocally = async (
 
   if (!current()) throw new Error("achievement-sync-context-changed");
   const achievementsData = localGameAchievement?.achievements ?? [];
-  const unlockedAchievements = localGameAchievement?.unlockedAchievements ?? [];
+  // Unlocks synced from the user's other devices count as already unlocked,
+  // so they don't pop up as new here.
+  const unlockedAchievements = SyncedUnlocksStore.withSynced(
+    game.shop,
+    game.objectId,
+    localGameAchievement?.unlockedAchievements ?? []
+  );
 
   const newAchievementsMap = new Map(
     achievements.toReversed().map((achievement) => {
@@ -279,6 +286,17 @@ const mergeAchievementsLocally = async (
     current
   );
   if (!current()) throw new Error("achievement-sync-context-changed");
+  void AchievementSync.recordLocal(
+    game.shop,
+    game.objectId,
+    achievementsToSync
+  ).catch((error) =>
+    achievementsLogger.error(
+      "Failed to record achievements for Drive sync",
+      game.objectId,
+      error
+    )
+  );
   if (shouldSyncWithRemote) {
     const context = HydraApi.getAuthContext();
     if (context)

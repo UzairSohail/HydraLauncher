@@ -20,7 +20,6 @@ import {
   useUserDetails,
 } from "@renderer/hooks";
 import {
-  AlertIcon,
   DownloadIcon,
   EyeClosedIcon,
   LockIcon,
@@ -32,7 +31,6 @@ import { LaunchboxDetailsSection } from "./launchbox-details-section";
 import { RecompilationsSection } from "./recompilations-section";
 import { SidebarSection } from "../sidebar-section/sidebar-section";
 import { buildGameAchievementPath } from "@renderer/helpers";
-import { useSubscription } from "@renderer/hooks/use-subscription";
 import { RetroAchievementsConnectBanner } from "@renderer/components/retro-achievements-connect-banner/retro-achievements-connect-banner";
 import "./sidebar.scss";
 import { GameLanguageSection } from "./game-language-section";
@@ -41,6 +39,7 @@ import { ControllerSupportSection } from "./controller-support-section";
 import { GameScreenshots } from "../game-screenshots/game-screenshots";
 import { LeaderboardSection } from "../leaderboard/leaderboard-section";
 import { AchievementsSkeletonList } from "./achievements-skeleton-list";
+import { AchievementSyncStatus } from "./achievement-sync-status";
 
 const ProtonDBSection = lazy(async () => {
   const mod = await import("./protondb-section");
@@ -149,7 +148,6 @@ export function Sidebar() {
     (state) => state.userPreferences.value
   );
 
-  const { showHydraCloudModal } = useSubscription();
   const { isFeatureEnabled, Feature } = useFeature();
   const { t } = useTranslation("game_details");
   const { formatDateTime } = useDate();
@@ -294,14 +292,7 @@ export function Sidebar() {
             <RetroAchievementsConnectBanner />
 
             {!hasActiveSubscription && achievementsCount > 0 && (
-              <button
-                type="button"
-                className="subscription-required-button"
-                onClick={() => showHydraCloudModal("achievements")}
-              >
-                <AlertIcon size={14} />
-                <span>{t("achievements_not_sync")}</span>
-              </button>
+              <AchievementSyncStatus />
             )}
 
             {(achievements ?? []).slice(0, 4).map((achievement) => {

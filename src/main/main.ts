@@ -43,6 +43,7 @@ import {
   migratePreferenceSecrets,
 } from "./services/user-preferences";
 import { SettingsSync } from "./services/settings-sync";
+import { AchievementSync } from "./services/achievement-sync";
 import { getDirSize } from "./services/download/helpers";
 import { isDebridPendingError } from "./services/download/debrid-files";
 import { GofileApi } from "./services/hosters";
@@ -134,6 +135,7 @@ export const loadState = async () => {
   void reconcileRecompilationDiscs();
   void syncRetroAchievementsEmulatorCredentials();
   SettingsSync.start();
+  void AchievementSync.start();
 
   await HydraApi.setupApi().then(async () => {
     void ScreenshotInputService.refreshFeatureFlag();

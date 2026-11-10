@@ -119,6 +119,8 @@ async function fixture(
     export const groupedSouvenirWorker = {trigger: async () => {}};
     export const launchedGamePids = new Map();
     export const Wine = {};
+    export const SyncedUnlocksStore = {withSynced: (_shop, _objectId, unlocked) => unlocked};
+    export const AchievementSync = {recordLocal: async () => {}};
   `;
   await build({
     stdin: {

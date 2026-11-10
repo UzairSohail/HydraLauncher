@@ -1,5 +1,6 @@
 import { dialog } from "electron";
 
+import { AchievementSync } from "@main/services/achievement-sync";
 import { PersonalCloud } from "@main/services/personal-cloud";
 import { SettingsSync } from "@main/services/settings-sync";
 import { WindowManager } from "@main/services/window-manager";
@@ -11,7 +12,10 @@ registerEvent("getPersonalCloudStatus", () => PersonalCloud.status());
 
 registerEvent("signInPersonalCloud", async () => {
   const status = await PersonalCloud.signIn();
-  if (status.signedIn) void SettingsSync.syncNow();
+  if (status.signedIn) {
+    void SettingsSync.syncNow();
+    void AchievementSync.syncNow();
+  }
   return status;
 });
 
@@ -95,4 +99,11 @@ registerEvent(
 registerEvent("syncSettingsNow", async () => {
   await SettingsSync.syncNow();
   return SettingsSync.getStatus();
+});
+
+registerEvent("getAchievementSyncStatus", () => AchievementSync.getStatus());
+
+registerEvent("syncAchievementsNow", async () => {
+  await AchievementSync.syncNow();
+  return AchievementSync.getStatus();
 });
