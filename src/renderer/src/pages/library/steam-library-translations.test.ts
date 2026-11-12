@@ -99,7 +99,7 @@ describe("Steam Library translations", () => {
         readLibrary("en").library_hydra,
         readLibrary("en").library_steam,
       ],
-      ["All Libraries", "Nacho", "Steam"]
+      ["All Libraries", "Nacho Launcher", "Steam"]
     );
 
     const readSettings = (locale: string) => {
