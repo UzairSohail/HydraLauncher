@@ -44,6 +44,7 @@ import {
   sortLibraryGames,
 } from "@renderer/helpers";
 import { useSearchParams } from "react-router-dom";
+import { useRecompilationUpdateSummaries } from "@renderer/hooks/use-recompilation-update-summaries";
 import { LibraryGameCard } from "./library-game-card";
 import { LibraryGameCardLarge } from "./library-game-card-large";
 import {
@@ -117,6 +118,16 @@ const SORT_OPTIONS: SortOption[] = [
 
 export default function Library() {
   const { library, updateLibrary } = useLibrary();
+  const recompilationUpdates = useRecompilationUpdateSummaries();
+  const gamesWithUpdates = useMemo(
+    () =>
+      new Set(
+        recompilationUpdates.map((update) => `launchbox:${update.objectId}`)
+      ),
+    [recompilationUpdates]
+  );
+  const hasRecompilationUpdate = (game: LibraryGame) =>
+    gamesWithUpdates.has(`${game.shop}:${game.objectId}`);
   const { userDetails } = useUserDetails();
   const accountId = userDetails?.id ?? null;
   const activeAccountIdRef = useRef(accountId);
@@ -943,12 +954,14 @@ export default function Library() {
                         key={`${game.shop}-${game.objectId}`}
                         game={game}
                         onContextMenu={handleOpenContextMenu}
+                        hasUpdate={hasRecompilationUpdate(game)}
                       />
                     ) : (
                       <LibraryGameCard
                         key={`${game.shop}-${game.objectId}`}
                         game={game}
                         onContextMenu={handleOpenContextMenu}
+                        hasUpdate={hasRecompilationUpdate(game)}
                       />
                     )
                   )}

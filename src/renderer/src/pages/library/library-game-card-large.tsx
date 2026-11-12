@@ -29,6 +29,7 @@ import {
   DatabaseIcon,
   FileZipIcon,
   CheckCircleFillIcon,
+  SyncIcon,
 } from "@primer/octicons-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -48,6 +49,8 @@ interface LibraryGameCardLargeProps {
     game: LibraryGame,
     position: { x: number; y: number }
   ) => void;
+  /** A recompilation installed for this game has an update waiting. */
+  hasUpdate?: boolean;
 }
 
 const normalizePathForCss = (url: string | null | undefined): string => {
@@ -91,6 +94,7 @@ function InstalledBadge({ emulatorIcon }: Readonly<InstalledBadgeProps>) {
 export const LibraryGameCardLarge = memo(function LibraryGameCardLarge({
   game,
   onContextMenu,
+  hasUpdate = false,
 }: Readonly<LibraryGameCardLargeProps>) {
   const { t } = useTranslation("library");
   const { formatPlayTime, handleCardClick, handleContextMenuClick } =
@@ -465,6 +469,15 @@ export const LibraryGameCardLarge = memo(function LibraryGameCardLarge({
               isHiddenFromOthers={game.isHiddenFromOthers}
               isConcealed={game.isConcealed}
             />
+            {hasUpdate && (
+              <span
+                className="library-game-card-large__update-badge"
+                title={t("update_available_tooltip")}
+                aria-label={t("update_available_tooltip")}
+              >
+                <SyncIcon size={12} />
+              </span>
+            )}
             {!hideBadges && (
               <div className="library-game-card-large__playtime">
                 {game.hasManuallyUpdatedPlaytime ? (

@@ -45,7 +45,13 @@ export interface InstallMarker {
   installedAt: string;
   name?: string;
   iconUrl?: string | null;
+  /** Update source the files came from; missing for installs made before sources existed. */
+  sourceId?: string;
+  publishedAt?: string | null;
 }
+
+export const getPreviousVersionDirectory = (installDirectory: string) =>
+  `${installDirectory}.previous`;
 
 export const readInstallMarker = async (
   installDirectory: string
