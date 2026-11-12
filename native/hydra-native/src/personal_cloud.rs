@@ -24,6 +24,8 @@ use cloud_save_manager::state::State;
 use cloud_save_manager::store::{Store, Version};
 use cloud_save_manager::wrap::{self, Log};
 use napi::bindgen_prelude::{Buffer, Error};
+
+use crate::google_device;
 use napi_derive::napi;
 
 /// Hydra's own files in the Drive folder live under this key.
@@ -101,6 +103,8 @@ pub struct PersonalCloudStatus {
     pub signed_in: bool,
     pub paused: bool,
     pub state_dir: String,
+    /// This build can sign in from a phone (see google_device.rs).
+    pub phone_sign_in_available: bool,
 }
 
 #[napi]
@@ -112,6 +116,7 @@ pub async fn personal_cloud_status() -> napi::Result<PersonalCloudStatus> {
             signed_in: app.is_signed_in(),
             paused,
             state_dir: app.state_dir.to_string_lossy().into_owned(),
+            phone_sign_in_available: google_device::device_client().is_some(),
         })
     })
     .await
@@ -125,14 +130,27 @@ static SIGN_IN: Mutex<Option<JoinHandle<Result<()>>>> = Mutex::new(None);
 pub async fn personal_cloud_begin_sign_in() -> napi::Result<String> {
     blocking(|| {
         let app = open_app()?;
-        let client = Client::find(&app.client_path())?;
+        let client_path = app.client_path();
+        // A phone sign-in leaves the device client in client.json, which can't
+        // do a browser sign-in. Use the built-in client and drop that file once
+        // the new sign-in is saved.
+        let replaces_device_client = google_device::is_device_client_file(&client_path);
+        let client = if replaces_device_client {
+            Client::built_in().context("this build has no browser sign-in details")?
+        } else {
+            Client::find(&client_path)?
+        };
         let (send, receive) = mpsc::channel::<String>();
         let state_dir = app.state_dir.clone();
         let handle = std::thread::spawn(move || -> Result<()> {
             let token = google::login(&endpoints(), &client, |url| {
                 let _ = send.send(url.to_string());
             })?;
-            secrets::save(&state_dir, &token)
+            secrets::save(&state_dir, &token)?;
+            if replaces_device_client {
+                let _ = std::fs::remove_file(&client_path);
+            }
+            Ok(())
         });
         let url = receive.recv_timeout(Duration::from_secs(10));
         let mut slot = SIGN_IN.lock().map_err(|_| anyhow!("sign-in state is unavailable"))?;
@@ -161,6 +179,48 @@ pub async fn personal_cloud_finish_sign_in() -> napi::Result<()> {
         handle.join().map_err(|_| anyhow!("sign-in stopped unexpectedly"))?
     })
     .await
+}
+
+// Phone sign-in (Google's flow for TVs and handhelds)
+
+#[napi(object)]
+pub struct PersonalCloudDeviceCode {
+    pub user_code: String,
+    pub verification_url: String,
+    pub expires_in_seconds: u32,
+    pub qr_svg: String,
+}
+
+/// True when this build can sign in from another device.
+#[napi]
+pub fn personal_cloud_device_sign_in_available() -> bool {
+    google_device::device_client().is_some()
+}
+
+/// Gets a code to enter on a phone. Finish with `personalCloudFinishDeviceSignIn`.
+#[napi]
+pub async fn personal_cloud_begin_device_sign_in() -> napi::Result<PersonalCloudDeviceCode> {
+    blocking(|| {
+        let app = open_app()?;
+        let code = google_device::begin(&app.state_dir, &app.client_path())?;
+        Ok(PersonalCloudDeviceCode {
+            user_code: code.user_code,
+            verification_url: code.verification_url,
+            expires_in_seconds: code.expires_in_seconds,
+            qr_svg: code.qr_svg,
+        })
+    })
+    .await
+}
+
+#[napi]
+pub async fn personal_cloud_finish_device_sign_in() -> napi::Result<()> {
+    blocking(google_device::finish).await
+}
+
+#[napi]
+pub fn personal_cloud_cancel_device_sign_in() {
+    google_device::cancel();
 }
 
 #[napi]

@@ -2,6 +2,7 @@ mod active_window;
 mod cloud_save;
 mod constants;
 mod desktop_duplication;
+mod google_device;
 mod in_place_extraction;
 mod kde_focus;
 mod linux_process;

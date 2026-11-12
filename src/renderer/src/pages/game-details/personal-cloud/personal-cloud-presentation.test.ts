@@ -5,7 +5,12 @@ import type { PersonalCloudGameInfo, PersonalCloudGameState } from "@types";
 
 import { getPersonalCloudPresentation } from "./personal-cloud-presentation.js";
 
-const status = { signedIn: true, paused: false, stateDir: "/state" };
+const status = {
+  signedIn: true,
+  paused: false,
+  stateDir: "/state",
+  phoneSignInAvailable: false,
+};
 const info = (overrides: Partial<PersonalCloudGameInfo> = {}) =>
   ({
     gameId: "game",

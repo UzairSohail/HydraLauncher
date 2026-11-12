@@ -9,6 +9,17 @@ export interface PersonalCloudStatus {
   signedIn: boolean;
   paused: boolean;
   stateDir: string;
+  /** This build can sign in by entering a code on a phone. */
+  phoneSignInAvailable: boolean;
+}
+
+/** A code to enter on a phone to finish Google sign-in on this device. */
+export interface PersonalCloudDeviceCode {
+  userCode: string;
+  verificationUrl: string;
+  expiresInSeconds: number;
+  /** The verification page as a QR code (an SVG document). */
+  qrSvg: string;
 }
 
 export interface PersonalCloudLinkInput {

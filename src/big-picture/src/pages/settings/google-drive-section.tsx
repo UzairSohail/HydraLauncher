@@ -10,9 +10,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button, Checkbox, VerticalFocusGroup } from "../../components";
+import { PhoneSignInModal } from "../../components/modals";
 import { useBigPictureToast } from "../../hooks";
 import type { FocusOverrideTarget, FocusOverrides } from "../../services";
 import {
+  GOOGLE_DRIVE_BROWSER_SIGN_IN_BUTTON_ID,
   GOOGLE_DRIVE_CLOUD_SAVES_BUTTON_ID,
   GOOGLE_DRIVE_SECTION_REGION_ID,
   GOOGLE_DRIVE_SYNC_BUTTON_ID,
@@ -45,6 +47,7 @@ export function GoogleDriveSection({
   const [syncStatus, setSyncStatus] = useState<SettingsSyncStatus | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isTogglingPause, setIsTogglingPause] = useState(false);
+  const [showPhoneSignIn, setShowPhoneSignIn] = useState(false);
 
   const refresh = useCallback(async () => {
     const electron = globalThis.window.electron;
@@ -109,6 +112,10 @@ export function GoogleDriveSection({
   };
 
   const signedIn = Boolean(cloudStatus?.signedIn);
+  // On a handheld the phone is the easy way in, so it comes first.
+  const offersPhoneSignIn = Boolean(
+    cloudStatus && !signedIn && cloudStatus.phoneSignInAvailable
+  );
   const syncEnabled = Boolean(signedIn && syncStatus?.enabled);
   const syncNeedsSignIn =
     syncStatus?.lastError?.reason === "sign_in_expired" ||
@@ -117,10 +124,11 @@ export function GoogleDriveSection({
   // Only the controls that are on screen take part in the focus chain.
   const focusIds = useMemo(() => {
     const ids = [GOOGLE_DRIVE_CLOUD_SAVES_BUTTON_ID];
+    if (offersPhoneSignIn) ids.push(GOOGLE_DRIVE_BROWSER_SIGN_IN_BUTTON_ID);
     if (signedIn) ids.push(GOOGLE_DRIVE_SYNC_CHECKBOX_ID);
     if (syncEnabled) ids.push(GOOGLE_DRIVE_SYNC_BUTTON_ID);
     return ids;
-  }, [signedIn, syncEnabled]);
+  }, [offersPhoneSignIn, signedIn, syncEnabled]);
 
   const overridesFor = (focusId: string): FocusOverrides => {
     const index = focusIds.indexOf(focusId);
@@ -171,6 +179,30 @@ export function GoogleDriveSection({
             >
               {cloudStatus?.paused ? t("resume") : t("pause")}
             </Button>
+          ) : offersPhoneSignIn ? (
+            <>
+              <Button
+                focusId={GOOGLE_DRIVE_CLOUD_SAVES_BUTTON_ID}
+                focusNavigationOverrides={overridesFor(
+                  GOOGLE_DRIVE_CLOUD_SAVES_BUTTON_ID
+                )}
+                disabled={isSigningIn}
+                onClick={() => setShowPhoneSignIn(true)}
+              >
+                {t("phone_sign_in")}
+              </Button>
+              <Button
+                variant="secondary"
+                loading={isSigningIn}
+                focusId={GOOGLE_DRIVE_BROWSER_SIGN_IN_BUTTON_ID}
+                focusNavigationOverrides={overridesFor(
+                  GOOGLE_DRIVE_BROWSER_SIGN_IN_BUTTON_ID
+                )}
+                onClick={signIn}
+              >
+                {isSigningIn ? t("signing_in") : t("sign_in")}
+              </Button>
+            </>
           ) : (
             <Button
               loading={isSigningIn}
@@ -228,6 +260,17 @@ export function GoogleDriveSection({
           ) : null}
         </div>
       </VerticalFocusGroup>
+
+      <PhoneSignInModal
+        visible={showPhoneSignIn}
+        onClose={() => setShowPhoneSignIn(false)}
+        onSignedIn={(status) => {
+          setShowPhoneSignIn(false);
+          setCloudStatus(status);
+          showSuccessToast(t("signed_in"), SETTINGS_TOAST_OPTIONS);
+          void refresh();
+        }}
+      />
     </SettingsSection>
   );
 }

@@ -1,4 +1,5 @@
 import type {
+  PersonalCloudDeviceCode,
   PersonalCloudGameInfo,
   PersonalCloudLinkInput,
   PersonalCloudLinkResult,
@@ -12,6 +13,10 @@ export interface PersonalCloudNativeModule {
   personalCloudStatus: () => Promise<PersonalCloudStatus>;
   personalCloudBeginSignIn: () => Promise<string>;
   personalCloudFinishSignIn: () => Promise<void>;
+  personalCloudDeviceSignInAvailable: () => boolean;
+  personalCloudBeginDeviceSignIn: () => Promise<PersonalCloudDeviceCode>;
+  personalCloudFinishDeviceSignIn: () => Promise<void>;
+  personalCloudCancelDeviceSignIn: () => void;
   personalCloudSetPaused: (paused: boolean) => Promise<void>;
   personalCloudLinkGame: (
     input: PersonalCloudLinkInput

@@ -6,6 +6,7 @@ import { gamesSublevel, levelKeys } from "@main/level";
 import type {
   Game,
   GameShop,
+  PersonalCloudDeviceCode,
   PersonalCloudGameState,
   PersonalCloudLinkResult,
   PersonalCloudStatus,
@@ -61,6 +62,24 @@ export class PersonalCloud {
       }
     })();
     return this.signingIn;
+  }
+
+  /**
+   * Starts sign-in from a phone: returns a code (and QR code) for the user to
+   * enter at Google's device page. Finish with `finishPhoneSignIn`.
+   */
+  public static beginPhoneSignIn(): Promise<PersonalCloudDeviceCode> {
+    return native().personalCloudBeginDeviceSignIn();
+  }
+
+  /** Waits until the user approves on their phone, declines, or the code expires. */
+  public static async finishPhoneSignIn(): Promise<PersonalCloudStatus> {
+    await native().personalCloudFinishDeviceSignIn();
+    return this.status();
+  }
+
+  public static cancelPhoneSignIn() {
+    native().personalCloudCancelDeviceSignIn();
   }
 
   /** True when cloud saves are signed in and not paused. Never throws. */

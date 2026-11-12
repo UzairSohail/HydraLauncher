@@ -357,6 +357,12 @@ contextBridge.exposeInMainWorld("electron", {
   /* Personal cloud saves (Cloud Save Manager) */
   getPersonalCloudStatus: () => ipcRenderer.invoke("getPersonalCloudStatus"),
   signInPersonalCloud: () => ipcRenderer.invoke("signInPersonalCloud"),
+  beginPersonalCloudPhoneSignIn: () =>
+    ipcRenderer.invoke("beginPersonalCloudPhoneSignIn"),
+  finishPersonalCloudPhoneSignIn: () =>
+    ipcRenderer.invoke("finishPersonalCloudPhoneSignIn"),
+  cancelPersonalCloudPhoneSignIn: () =>
+    ipcRenderer.invoke("cancelPersonalCloudPhoneSignIn"),
   setPersonalCloudPaused: (paused: boolean) =>
     ipcRenderer.invoke("setPersonalCloudPaused", paused),
   getPersonalCloudGameState: (shop: GameShop, objectId: string) =>
