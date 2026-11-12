@@ -111,6 +111,8 @@ export interface Game extends LibraryCatalogueMetadata {
   availableUpdate?: GameUpdateInfo | null;
   /** A listing the user chose to skip, so it isn't offered again. */
   skippedUpdateRepackId?: string | null;
+  /** The version an update is replacing, kept playable until the new one is ready. */
+  previousInstall?: PreviousInstall | null;
   installedSizeInBytes?: number | null;
   installerSizeInBytes?: number | null;
   steamShortcutAppId?: number;
@@ -119,6 +121,16 @@ export interface Game extends LibraryCatalogueMetadata {
   selectedDiscPath?: string | null;
   dontAskDiscSelection?: boolean;
   romSizeBytes?: number | null;
+}
+
+export interface PreviousInstall {
+  /** Where the old files were moved aside while the update downloads. */
+  folderPath: string | null;
+  /** Where the old files were, so a cancelled update can put them back. */
+  originalFolderPath: string | null;
+  download: Download | null;
+  installedRepack: InstalledRepackInfo | null;
+  executablePath: string | null;
 }
 
 export interface DownloadFile {

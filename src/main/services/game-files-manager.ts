@@ -50,6 +50,7 @@ import { SystemPath } from "./system-path";
 import { WindowManager } from "./window-manager";
 import { runAutomaticCloudSaveSync } from "./cloud-save";
 import { updateGameRecord } from "./game-record-updater";
+import { GameUpdates } from "./game-updates";
 
 const PROGRESS_THROTTLE_MS = 1000;
 
@@ -465,6 +466,9 @@ export class GameFilesManager {
 
     if (!extractedDownload) return;
 
+    await GameUpdates.finishUpdate(this.shop, this.objectId).catch((error) =>
+      logger.error("[GameFilesManager] Failed to finish game update", error)
+    );
     await this.searchAndBindExecutable();
     const hasInstaller =
       (await findDownloadInstaller(extractedDownload)) !== null;

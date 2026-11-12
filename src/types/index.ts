@@ -201,7 +201,7 @@ export interface StartGameDownloadPayload {
   selectedFilesSize?: number | null;
   /** The source listing being downloaded, remembered to check for updates. */
   repack?: InstalledRepackInfo;
-  /** Remove the installed version first, after backing up its saves. */
+  /** Set the installed version aside until this one is ready, after backing up its saves. */
   replaceInstalledVersion?: boolean;
 }
 

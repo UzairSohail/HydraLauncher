@@ -33,8 +33,20 @@ export class TorrentClient {
   private closing = false;
   private generation = 0;
   private readonly pending = new Set<(error: Error) => void>();
+  private started = false;
+
+  /** Runs once each time the engine starts, e.g. to apply saved settings. */
+  public onStarted: (() => Promise<void> | void) | null = null;
 
   constructor(private readonly backend: TorrentBackend) {}
+
+  /**
+   * True once the engine has been started. It is started only when something
+   * needs it, so polling can skip it while nothing is using torrents.
+   */
+  public get isStarted(): boolean {
+    return this.started && !this.closing;
+  }
 
   public async initialize(): Promise<void> {
     if (this.shutdownPromise !== null) await this.shutdownPromise;
@@ -46,6 +58,10 @@ export class TorrentClient {
         throw error;
       });
     await this.initialization;
+    if (!this.started) {
+      this.started = true;
+      await Promise.resolve(this.onStarted?.()).catch(() => undefined);
+    }
   }
 
   public async call<T>(
@@ -108,6 +124,7 @@ export class TorrentClient {
       await this.backend.shutdown();
     })().finally(() => {
       this.initialization = null;
+      this.started = false;
       this.shutdownPromise = null;
     });
     return this.shutdownPromise;

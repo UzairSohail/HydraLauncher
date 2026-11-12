@@ -43,6 +43,7 @@ const addGameToQueue = async (
   const gameKey = levelKeys.game(shop, objectId);
   let download: Download;
   let didWriteDownload = false;
+  let setAside = false;
 
   try {
     if (isBlockedTorrentDownload(downloader, uri)) {
@@ -78,7 +79,7 @@ const addGameToQueue = async (
       await DownloadOrchestrator.validateDownloadOrMarkPending(download);
     }
     if (replaceInstalledVersion) {
-      await GameUpdates.removeInstalledVersion(shop, objectId);
+      setAside = await GameUpdates.setAsideInstalledVersion(shop, objectId);
     }
     await prepareGameEntry({ gameKey, title, objectId, shop });
     if (repack) {
@@ -86,6 +87,9 @@ const addGameToQueue = async (
     }
     await DownloadManager.cancelDownload(gameKey).catch(() => null);
   } catch (err: unknown) {
+    if (setAside) {
+      await GameUpdates.restorePreviousVersion(shop, objectId).catch(() => null);
+    }
     if (isKnownDownloadError(err)) {
       logger.warn(
         "Failed to validate download URL for queue with expected download error",
@@ -117,6 +121,9 @@ const addGameToQueue = async (
       await DownloadManager.cancelDownload(gameKey).catch(() => null);
       await downloadsSublevel.del(gameKey).catch(() => null);
       await DownloadOrchestrator.syncAfterDownloadRemoved({ shop, objectId });
+    }
+    if (setAside) {
+      await GameUpdates.restorePreviousVersion(shop, objectId).catch(() => null);
     }
 
     logger.error("Failed to add game to queue", err);

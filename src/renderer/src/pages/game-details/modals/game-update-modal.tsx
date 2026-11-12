@@ -21,7 +21,7 @@ export interface GameUpdateModalProps {
 
 /**
  * Offers the newer version a game's download source lists. Updating backs up
- * the saves, removes the installed files and downloads the new version.
+ * the saves and downloads the new version, keeping the old one until it's ready.
  */
 export function GameUpdateModal({
   visible,
