@@ -28,6 +28,7 @@ import {
   AlertFillIcon,
   ImageIcon,
   CheckCircleFillIcon,
+  SyncIcon,
 } from "@primer/octicons-react";
 import {
   EMULATOR_ICONS,
@@ -46,11 +47,14 @@ interface LibraryGameCardProps {
   ) => void;
   onShowTooltip?: (gameId: string) => void;
   onHideTooltip?: () => void;
+  /** A recompilation installed for this game has an update waiting. */
+  hasUpdate?: boolean;
 }
 
 export const LibraryGameCard = memo(function LibraryGameCard({
   game,
   onContextMenu,
+  hasUpdate = false,
 }: Readonly<LibraryGameCardProps>) {
   const { t } = useTranslation("library");
   const { formatPlayTime, handleCardClick, handleContextMenuClick } =
@@ -268,6 +272,15 @@ export const LibraryGameCard = memo(function LibraryGameCard({
               isHiddenFromOthers={game.isHiddenFromOthers}
               isConcealed={game.isConcealed}
             />
+            {hasUpdate && (
+              <span
+                className="library-game-card__update-badge"
+                title={t("update_available_tooltip")}
+                aria-label={t("update_available_tooltip")}
+              >
+                <SyncIcon size={11} />
+              </span>
+            )}
             {!hideBadges && (
               <div className="library-game-card__playtime">
                 {game.hasManuallyUpdatedPlaytime ? (

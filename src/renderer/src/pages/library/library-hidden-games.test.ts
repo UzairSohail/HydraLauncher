@@ -194,6 +194,9 @@ async function renderLibrary(
     "react-router-dom": {
       useSearchParams: () => [searchParams, noop],
     },
+    "@renderer/hooks/use-recompilation-update-summaries": {
+      useRecompilationUpdateSummaries: () => [],
+    },
     "./library-game-card": { LibraryGameCard: gameCard },
     "./library-game-card-large": { LibraryGameCardLarge: gameCard },
     "./library-display-menu": { LibraryDisplayMenu: () => null },
