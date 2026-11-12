@@ -55,6 +55,7 @@ export function LocalNotificationItem({
       case "EXTRACTION_COMPLETE":
         return <PackageIcon size={24} />;
       case "UPDATE_AVAILABLE":
+      case "GAME_UPDATE_AVAILABLE":
         return <SyncIcon size={24} />;
       case "ACHIEVEMENT_UNLOCKED":
         return <TrophyIcon size={24} />;

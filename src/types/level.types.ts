@@ -1,4 +1,4 @@
-import type { Downloader } from "@shared";
+import type { Downloader, GameUpdateInfo, InstalledRepackInfo } from "@shared";
 import type { GameShop } from "./game.types";
 import type { DownloadStatus } from "./download.types";
 import type { ClassicsDisc } from "./emulator.types";
@@ -105,6 +105,12 @@ export interface Game extends LibraryCatalogueMetadata {
   automaticCloudSync?: boolean;
   hasManuallyUpdatedPlaytime?: boolean;
   newDownloadOptionsCount?: number;
+  /** The download source listing the installed version came from. */
+  installedRepack?: InstalledRepackInfo | null;
+  /** A newer version that the same source lists, if any. */
+  availableUpdate?: GameUpdateInfo | null;
+  /** A listing the user chose to skip, so it isn't offered again. */
+  skippedUpdateRepackId?: string | null;
   installedSizeInBytes?: number | null;
   installerSizeInBytes?: number | null;
   steamShortcutAppId?: number;

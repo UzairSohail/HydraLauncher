@@ -50,6 +50,7 @@ export const gameDetailsContext = createContext<GameDetailsContext>({
   isLoading: false,
   objectId: undefined,
   showRepacksModal: false,
+  showGameUpdateModal: false,
   showGameOptionsModal: false,
   gameOptionsInitialCategory: "general",
   stats: null,
@@ -64,6 +65,7 @@ export const gameDetailsContext = createContext<GameDetailsContext>({
   setShowGameOptionsModal: () => {},
   setGameOptionsInitialCategory: () => {},
   setShowRepacksModal: () => {},
+  setShowGameUpdateModal: () => {},
   setHasNSFWContentBlocked: () => {},
   cancelTransfer: () => {},
 });
@@ -106,6 +108,7 @@ export function GameDetailsContextProvider({
   const [isLoading, setIsLoading] = useState(true);
   const [isGameRunning, setIsGameRunning] = useState(false);
   const [showRepacksModal, setShowRepacksModal] = useState(false);
+  const [showGameUpdateModal, setShowGameUpdateModal] = useState(false);
   const [showGameOptionsModal, setShowGameOptionsModal] = useState(false);
   const [gameOptionsInitialCategory, setGameOptionsInitialCategory] =
     useState<GameOptionsCategoryId>("general");
@@ -650,6 +653,7 @@ export function GameDetailsContextProvider({
         showGameOptionsModal,
         gameOptionsInitialCategory,
         showRepacksModal,
+        showGameUpdateModal,
         stats,
         achievements,
         hasNSFWContentBlocked,
@@ -661,6 +665,7 @@ export function GameDetailsContextProvider({
         updateGame,
         refreshGameDetails,
         setShowRepacksModal,
+        setShowGameUpdateModal,
         setShowGameOptionsModal,
         setGameOptionsInitialCategory,
         cancelTransfer,

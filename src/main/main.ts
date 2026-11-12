@@ -1,3 +1,4 @@
+import { GameUpdates } from "@main/services/game-updates";
 import {
   initializeEpicIntegration,
   startEpicSyncOnStartup,
@@ -155,6 +156,7 @@ export const loadState = async () => {
         logger.error("Failed to migrate download sources", error)
       );
       await DownloadSourcesChecker.checkForChanges();
+      GameUpdates.start();
     })();
 
     initializeScreenshots();

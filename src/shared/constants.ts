@@ -106,6 +106,8 @@ export enum DownloadError {
   TorBoxLinkUnavailable = "download_error_torbox_link_unavailable",
   NetworkUnreachable = "download_error_network_unreachable",
   NetworkCertificateRejected = "download_error_network_certificate_rejected",
+  UpdateGameRunning = "download_error_update_game_running",
+  UpdateSaveBackupFailed = "download_error_update_save_backup_failed",
 }
 
 export const MINIMUM_FREE_DISK_SPACE_BYTES = 512 * 1024 * 1024;

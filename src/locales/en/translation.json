@@ -1142,7 +1142,21 @@
     "epic_not_enough_space": "Not enough disk space for this selection.",
     "epic_selection_invalid": "The selection changed. Reopen the download options and try again.",
     "epic_retry": "Try again",
-    "review_played_with": "Played with {{name}}"
+    "review_played_with": "Played with {{name}}",
+    "download_error_update_game_running": "Close the game before updating it.",
+    "download_error_update_save_backup_failed": "Couldn't back up your saves to Google Drive, so the update was cancelled. Nothing was removed.",
+    "game_update_button": "Update",
+    "game_update_title": "Update available",
+    "game_update_description": "{{source}} has a newer version of this game.",
+    "game_update_installed": "Installed",
+    "game_update_available": "New version",
+    "game_update_saves_backed_up": "Your saves will be backed up to Google Drive before anything is removed.",
+    "game_update_saves_not_backed_up": "Cloud saves are off, so saves aren't backed up first. Saves kept inside the game folder will be lost.",
+    "game_update_hint": "Nacho removes the old version's files and downloads the new one in their place. Saves outside the game folder aren't touched. If the game was installed with a setup, install the new version into the same folder.",
+    "game_update_listing_missing": "This version isn't available to download right now. Try again later.",
+    "game_update_skip": "Skip this version",
+    "game_update_later": "Later",
+    "game_update_confirm": "Update"
   },
   "activation": {
     "title": "Activate Nacho",
@@ -2085,7 +2099,9 @@
     "scan_games_complete_linked_description": "Found the executable of {{linked}} games in your library",
     "scan_games_complete_pending_description": "Found {{pending}} executables that need you to choose which game they belong to",
     "scan_games_no_results_title": "Scanning for games finished",
-    "scan_games_no_results_description": "No installed games were found"
+    "scan_games_no_results_description": "No installed games were found",
+    "game_update_available": "Update available for {{title}}",
+    "game_update_available_description": "{{version}} is out on {{source}}"
   },
   "system_tray": {
     "open": "Open Nacho",

@@ -235,6 +235,12 @@
     opacity: 0.85;
   }
 
+  &__game-update-icon {
+    display: flex;
+    flex-shrink: 0;
+    color: globals.$brand-teal;
+  }
+
   &__game-badge {
     background-color: rgba(34, 197, 94, 0.15);
     color: rgb(187, 247, 208);

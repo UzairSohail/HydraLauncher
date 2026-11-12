@@ -20,8 +20,18 @@ import {
   GameDetailsContextProvider,
 } from "@renderer/context";
 import { useDownload } from "@renderer/hooks";
-import { GameOptionsModal, RepacksModal } from "./modals";
-import { Downloader, getDownloadersForUri, getRepackUriParts } from "@shared";
+import {
+  GameOptionsModal,
+  GameUpdateModal,
+  RepacksModal,
+  type RepacksModalProps,
+} from "./modals";
+import {
+  Downloader,
+  getDownloadersForUri,
+  getRepackUriParts,
+  toInstalledRepackInfo,
+} from "@shared";
 import { CloudSyncFilesModal } from "./cloud-sync-files-modal/cloud-sync-files-modal";
 import { CloudSaveV2Provider } from "./cloud-save-v2";
 import "./game-details.scss";
@@ -90,16 +100,19 @@ export default function GameDetails() {
           gameTitle,
           shop,
           showRepacksModal,
+          showGameUpdateModal,
           showGameOptionsModal,
           gameOptionsInitialCategory,
           hasNSFWContentBlocked,
           setHasNSFWContentBlocked,
           updateGame,
           setShowRepacksModal,
+          setShowGameUpdateModal,
           setShowGameOptionsModal,
           setGameOptionsInitialCategory, // ADD THIS
         }) => {
-          const handleStartDownload = async (
+          const startRepackDownload = async (
+            replaceInstalledVersion: boolean,
             repack: GameRepack,
             downloader: Downloader,
             downloadPath: string,
@@ -124,6 +137,8 @@ export default function GameDetails() {
               fileSize: repack.fileSize,
               fileIndices,
               selectedFilesSize,
+              repack: toInstalledRepackInfo(repack, uri),
+              replaceInstalledVersion,
             };
 
             const response = addToQueueOnly
@@ -133,12 +148,21 @@ export default function GameDetails() {
             if (response.ok) {
               await updateGame();
               setShowRepacksModal(false);
+              setShowGameUpdateModal(false);
               setShowGameOptionsModal(false);
               setGameOptionsInitialCategory("general");
             }
 
             return response;
           };
+
+          const handleStartDownload: RepacksModalProps["startDownload"] = (
+            ...args
+          ) => startRepackDownload(false, ...args);
+
+          const handleStartUpdate: RepacksModalProps["startDownload"] = (
+            ...args
+          ) => startRepackDownload(true, ...args);
 
           const handleNSFWContentRefuse = () => {
             setHasNSFWContentBlocked(false);
@@ -175,6 +199,12 @@ export default function GameDetails() {
                     visible={showRepacksModal}
                     startDownload={handleStartDownload}
                     onClose={() => setShowRepacksModal(false)}
+                  />
+
+                  <GameUpdateModal
+                    visible={showGameUpdateModal}
+                    startDownload={handleStartUpdate}
+                    onClose={() => setShowGameUpdateModal(false)}
                   />
 
                   <ConfirmationModal

@@ -5,6 +5,7 @@ import "./assign-game-to-collection";
 import "./change-game-playtime";
 import "./cleanup-unused-assets";
 import "./clear-new-download-options";
+import "./game-updates";
 import "./close-game";
 import "./copy-custom-game-asset";
 import "./create-game-shortcut";

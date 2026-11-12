@@ -34,6 +34,7 @@ export interface GameDetailsContext {
   isLoading: boolean;
   objectId: string | undefined;
   showRepacksModal: boolean;
+  showGameUpdateModal: boolean;
   showGameOptionsModal: boolean;
   gameOptionsInitialCategory: GameOptionsCategoryId;
   stats: GameStats | null;
@@ -46,6 +47,7 @@ export interface GameDetailsContext {
   updateGame: () => Promise<void>;
   refreshGameDetails: () => Promise<void>;
   setShowRepacksModal: React.Dispatch<React.SetStateAction<boolean>>;
+  setShowGameUpdateModal: React.Dispatch<React.SetStateAction<boolean>>;
   setShowGameOptionsModal: React.Dispatch<React.SetStateAction<boolean>>;
   setGameOptionsInitialCategory: React.Dispatch<
     React.SetStateAction<GameOptionsCategoryId>
