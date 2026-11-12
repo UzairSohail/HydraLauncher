@@ -6,12 +6,10 @@ import {
   CheckboxField,
   ConfirmationModal,
   GuideLink,
-  HydraCloudBadge,
   TextField,
 } from "@renderer/components";
 import { settingsContext } from "@renderer/context";
 import { useAppSelector, useFeature, useUserDetails } from "@renderer/hooks";
-import { useSubscription } from "@renderer/hooks/use-subscription";
 import { FileDirectoryIcon, HistoryIcon } from "@primer/octicons-react";
 import { useLocation } from "react-router-dom";
 import { isAchievementSouvenirsEnabled } from "@shared";
@@ -49,7 +47,6 @@ export function SettingsContextContentGameplay() {
   const { t } = useTranslation("settings");
   const { updateUserPreferences } = useContext(settingsContext);
   const { hasActiveSubscription } = useUserDetails();
-  const { showHydraCloudModal } = useSubscription();
   const { hash } = useLocation();
   const { isFeatureEnabled, Feature } = useFeature();
   const isScreenshotsEnabled = isFeatureEnabled(Feature.Screenshots);
@@ -239,23 +236,7 @@ export function SettingsContextContentGameplay() {
             checked={form.enableAchievementSouvenirs}
             onChange={handleAchievementSouvenirsChange}
           />
-        ) : (
-          <button
-            type="button"
-            className="settings-context-content-gameplay__hydra-cloud-row"
-            onClick={() => showHydraCloudModal("achievements")}
-          >
-            <CheckboxField
-              id="achievement-souvenirs"
-              label={t("enable_achievement_souvenirs")}
-              checked={false}
-              disabled
-              readOnly
-            />
-
-            <HydraCloudBadge />
-          </button>
-        )}
+        ) : null}
 
         <div className="settings-context-content-gameplay__screenshots-directory">
           <TextField

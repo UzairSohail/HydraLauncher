@@ -1,5 +1,4 @@
 import { useAppSelector, useUserDetails } from "@renderer/hooks";
-import { useSubscription } from "@renderer/hooks/use-subscription";
 import type { UserAchievement } from "@types";
 import { useTranslation } from "react-i18next";
 import "./achievements.scss";
@@ -67,7 +66,6 @@ export function AchievementList({
   const isOtherUser = viewerUnlockedNames !== undefined;
   const { t, i18n } = useTranslation("achievement");
   const { hasActiveSubscription } = useUserDetails();
-  const { showHydraCloudModal } = useSubscription();
   const formatUnlockDateTime = (date: number) =>
     formatAchievementUnlockDateTime(date, i18n.language);
   const showHiddenAchievements = useAppSelector(
@@ -434,22 +432,7 @@ export function AchievementList({
                 {earnedPoints} / {totalPoints}
               </span>
             </div>
-          ) : (
-            <button
-              type="button"
-              className="achievements__toolbar-points achievements__toolbar-points--locked"
-              title={t("how_to_earn_achievements_points")}
-              onClick={() => showHydraCloudModal("achievements-points")}
-            >
-              <span className="achievements__toolbar-points-label">
-                {t("earned_points")}
-              </span>
-              <HydraIcon className="achievements__toolbar-points-icon" />
-              <span className="achievements__toolbar-points-value">
-                ??? / ???
-              </span>
-            </button>
-          )}
+          ) : null}
         </div>
       </div>
 

@@ -2,10 +2,12 @@ import path from "node:path";
 
 import { shell } from "electron";
 
-import { gamesSublevel, levelKeys } from "@main/level";
+import { db, gamesSublevel, levelKeys } from "@main/level";
 import type {
   Game,
   GameShop,
+  PersonalCloudDeviceCode,
+  PersonalCloudLastSync,
   PersonalCloudGameState,
   PersonalCloudLinkResult,
   PersonalCloudStatus,
@@ -61,6 +63,24 @@ export class PersonalCloud {
       }
     })();
     return this.signingIn;
+  }
+
+  /**
+   * Starts sign-in from a phone: returns a code (and QR code) for the user to
+   * enter at Google's device page. Finish with `finishPhoneSignIn`.
+   */
+  public static beginPhoneSignIn(): Promise<PersonalCloudDeviceCode> {
+    return native().personalCloudBeginDeviceSignIn();
+  }
+
+  /** Waits until the user approves on their phone, declines, or the code expires. */
+  public static async finishPhoneSignIn(): Promise<PersonalCloudStatus> {
+    await native().personalCloudFinishDeviceSignIn();
+    return this.status();
+  }
+
+  public static cancelPhoneSignIn() {
+    native().personalCloudCancelDeviceSignIn();
   }
 
   /** True when cloud saves are signed in and not paused. Never throws. */
@@ -155,6 +175,39 @@ export class PersonalCloud {
 
   private static notify(event: PersonalCloudSyncEvent) {
     WindowManager.sendToAppWindows("on-personal-cloud-sync", event);
+    void this.recordLastSync(event);
+  }
+
+  private static async recordLastSync(event: PersonalCloudSyncEvent) {
+    try {
+      const game = await this.getGame(event.shop, event.objectId).catch(
+        () => null
+      );
+      const record: PersonalCloudLastSync = {
+        ...event,
+        at: Date.now(),
+        title: game?.title ?? null,
+      };
+      await db.put<string, PersonalCloudLastSync>(
+        levelKeys.personalCloudLastSync,
+        record,
+        { valueEncoding: "json" }
+      );
+    } catch (error) {
+      logger.warn("[Personal Cloud] Couldn't record the last sync", {
+        error: errorMessage(error),
+      });
+    }
+  }
+
+  /** The last cloud save sync on this device, if any. */
+  public static async getLastSync(): Promise<PersonalCloudLastSync | null> {
+    return db
+      .get<
+        string,
+        PersonalCloudLastSync | null
+      >(levelKeys.personalCloudLastSync, { valueEncoding: "json" })
+      .catch(() => null);
   }
 
   private static async runSync(

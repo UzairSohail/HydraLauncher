@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CloudIcon } from "@phosphor-icons/react";
 
-import { Button } from "@renderer/components";
+import { Button, PhoneSignInModal } from "@renderer/components";
 import { useToast } from "@renderer/hooks";
 import type { PersonalCloudStatus } from "@types";
 
@@ -15,6 +15,7 @@ export function SettingsPersonalCloud() {
   const [status, setStatus] = useState<PersonalCloudStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isWorking, setIsWorking] = useState(false);
+  const [showPhoneSignIn, setShowPhoneSignIn] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -64,9 +65,20 @@ export function SettingsPersonalCloud() {
   const renderActions = () => {
     if (!status?.signedIn) {
       return (
-        <Button onClick={signIn} disabled={isWorking}>
-          {isWorking ? t("signing_in") : t("sign_in")}
-        </Button>
+        <>
+          {status?.phoneSignInAvailable && (
+            <Button
+              theme="outline"
+              onClick={() => setShowPhoneSignIn(true)}
+              disabled={isWorking}
+            >
+              {t("phone_sign_in")}
+            </Button>
+          )}
+          <Button onClick={signIn} disabled={isWorking}>
+            {isWorking ? t("signing_in") : t("sign_in")}
+          </Button>
+        </>
       );
     }
     return (
@@ -91,6 +103,15 @@ export function SettingsPersonalCloud() {
       {status?.signedIn && (
         <p className="settings-integration-card__meta">{t("pause_note")}</p>
       )}
+
+      <PhoneSignInModal
+        visible={showPhoneSignIn}
+        onClose={() => setShowPhoneSignIn(false)}
+        onSignedIn={(next) => {
+          setStatus(next);
+          setShowPhoneSignIn(false);
+        }}
+      />
     </SettingsIntegrationCard>
   );
 }

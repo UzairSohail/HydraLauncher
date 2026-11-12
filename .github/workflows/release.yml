@@ -84,6 +84,11 @@ jobs:
       # own Google account.
       CSM_GOOGLE_CLIENT_ID: ${{ secrets.CSM_GOOGLE_CLIENT_ID }}
       CSM_GOOGLE_CLIENT_SECRET: ${{ secrets.CSM_GOOGLE_CLIENT_SECRET }}
+      # Google's "TVs and Limited Input devices" client, for signing in from a
+      # phone on handhelds (native/hydra-native/src/google_device.rs). Left
+      # unset, the phone sign-in button is simply hidden.
+      NACHO_GOOGLE_DEVICE_CLIENT_ID: ${{ secrets.NACHO_GOOGLE_DEVICE_CLIENT_ID }}
+      NACHO_GOOGLE_DEVICE_CLIENT_SECRET: ${{ secrets.NACHO_GOOGLE_DEVICE_CLIENT_SECRET }}
 
     strategy:
       matrix:

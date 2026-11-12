@@ -397,7 +397,20 @@ export function DownloadSettingsModal({
     }
   }, [visible, checkFolderWritePermission, selectedPath]);
 
-  const downloadOptions = useDownloadOptions(repack);
+  const allDownloadOptions = useDownloadOptions(repack);
+  // VikingFile only works with a paid Hydra Cloud account, which Nacho
+  // Launcher can't sign in to, so it's only listed when already usable.
+  const downloadOptions = useMemo(
+    () =>
+      allDownloadOptions.filter(
+        (option) =>
+          !(
+            option.downloader === Downloader.VikingFile &&
+            option.isAvailableButNotConfigured
+          )
+      ),
+    [allDownloadOptions]
+  );
 
   useEffect(() => {
     let cancelled = false;

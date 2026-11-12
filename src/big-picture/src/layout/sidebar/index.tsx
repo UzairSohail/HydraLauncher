@@ -11,7 +11,7 @@ import {
   SquaresFourIcon,
   StarIcon,
 } from "@phosphor-icons/react";
-import { AuthPage, getDisplayedPlayTimeInMilliseconds } from "@shared";
+import { getDisplayedPlayTimeInMilliseconds } from "@shared";
 import {
   type FocusEvent,
   forwardRef,
@@ -792,12 +792,14 @@ function SidebarProfile({
     onNotificationsOpenChange(false);
   }, [onNotificationsOpenChange]);
   const handleProfileClick = useCallback(() => {
+    const basePath = IS_DESKTOP ? "/big-picture" : "";
+    // Nacho Launcher has no Hydra account sign-in; the profile tile opens
+    // Settings instead, where Google sign-in lives.
     if (!userDetails?.id) {
-      void globalThis.window.electron.openAuthWindow(AuthPage.SignIn);
+      navigate(`${basePath}/settings`);
       return;
     }
 
-    const basePath = IS_DESKTOP ? "/big-picture" : "";
     navigate(`${basePath}/profile/${userDetails.id}`);
   }, [navigate, userDetails?.id]);
 
@@ -827,8 +829,8 @@ function SidebarProfile({
         <UserProfile
           image={userDetails?.profileImageUrl}
           backgroundImageUrl={runningGameBackgroundImageUrl}
-          name={userDetails?.displayName ?? "Sign in"}
-          friendCode={userDetails?.id ?? "Not signed in"}
+          name={userDetails?.displayName ?? "Nacho Launcher"}
+          friendCode={userDetails?.id ?? ""}
           profileFocusId={BIG_PICTURE_SIDEBAR_PROFILE_ID}
           notificationsFocusId={BIG_PICTURE_SIDEBAR_NOTIFICATIONS_ID}
           notificationsFocusable={notificationsFocusable}

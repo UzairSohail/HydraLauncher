@@ -15,8 +15,7 @@ import {
   TrashIcon,
 } from "@primer/octicons-react";
 import { Button, ImageCropModal } from "@renderer/components";
-import { useToast, useAppSelector, useUserDetails } from "@renderer/hooks";
-import { useSubscription } from "@renderer/hooks/use-subscription";
+import { useToast, useAppSelector } from "@renderer/hooks";
 import type {
   Game,
   CatalogueGameIdentity,
@@ -203,8 +202,6 @@ export function GameAssetsSettings({
   const { t } = useTranslation("sidebar");
   const { t: tProfile } = useTranslation("user_profile");
   const { showSuccessToast, showErrorToast } = useToast();
-  const { hasActiveSubscription } = useUserDetails();
-  const { showHydraCloudModal } = useSubscription();
   const navigate = useNavigate();
   const classicsUseHeroLayout =
     useAppSelector(
@@ -1234,17 +1231,6 @@ export function GameAssetsSettings({
           )}
 
         {renderImageSection(selectedAssetType)}
-
-        {!hasActiveSubscription && !isCustomGame(game) && (
-          <button
-            type="button"
-            className="subscription-required-button"
-            onClick={() => showHydraCloudModal("customization")}
-          >
-            <AlertIcon size={14} />
-            <span>{t("custom_assets_not_sync")}</span>
-          </button>
-        )}
 
         {!isCustomGame(game) && (
           <GameArtworkPicker

@@ -45,6 +45,8 @@ export const GOOGLE_DRIVE_SECTION_REGION_ID =
   "integrations-google-drive-region";
 export const GOOGLE_DRIVE_CLOUD_SAVES_BUTTON_ID =
   "integrations-google-drive-cloud-saves";
+export const GOOGLE_DRIVE_BROWSER_SIGN_IN_BUTTON_ID =
+  "integrations-google-drive-browser-sign-in";
 export const GOOGLE_DRIVE_SYNC_CHECKBOX_ID = "integrations-google-drive-sync";
 export const GOOGLE_DRIVE_SYNC_BUTTON_ID = "integrations-google-drive-sync-now";
 export const ACCOUNT_PRIVACY_PRIVACY_SELECT_ID =

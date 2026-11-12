@@ -33,3 +33,4 @@ export * from "./use-gamification-progress";
 export * from "./use-gamification-missions";
 export * from "./use-file-icons";
 export * from "./use-drag-text-selection";
+export * from "./use-phone-sign-in";

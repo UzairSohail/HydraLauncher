@@ -23,6 +23,8 @@ indexmap = { version = "2.14", features = ["serde"] }
 mime_guess = "2.0.5"
 napi = { version = "3.5.2", default-features = false, features = ["napi8", "tokio_rt"] }
 napi-derive = "3.3.2"
+# QR code for signing in from a phone (google_device.rs).
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 rayon = "=1.12.0"
 reqwest = { version = "0.13", default-features = false, features = ["stream", "charset", "http2", "system-proxy", "rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
@@ -34,6 +36,8 @@ sysinfo = "0.37.2"
 time = { version = "=0.3.47", features = ["parsing"] }
 tokio = { version = "1.52", features = ["fs", "rt", "sync", "macros"] }
 unicode-normalization = "0.1.25"
+# Same HTTP client Cloud Save Manager uses for Google sign-in.
+ureq = { version = "2", features = ["json"] }
 uuid = { version = "1.11.0", features = ["v4"] }
 walkdir = "=2.5.0"
 

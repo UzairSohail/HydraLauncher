@@ -146,8 +146,10 @@ import type {
   ResolveEpicCloudSaveConflictPayload,
   EpicLaunchOptions,
   EpicLinuxCompatibility,
+  PersonalCloudDeviceCode,
   PersonalCloudGameState,
   PersonalCloudStatus,
+  SyncOverview,
   PersonalCloudSyncEvent,
   PersonalCloudSyncResult,
   PersonalCloudVersion,
@@ -278,6 +280,10 @@ declare global {
     /* Personal cloud saves (Cloud Save Manager) */
     getPersonalCloudStatus: () => Promise<PersonalCloudStatus>;
     signInPersonalCloud: () => Promise<PersonalCloudStatus>;
+    getSyncOverview: () => Promise<SyncOverview>;
+    beginPersonalCloudPhoneSignIn: () => Promise<PersonalCloudDeviceCode>;
+    finishPersonalCloudPhoneSignIn: () => Promise<PersonalCloudStatus>;
+    cancelPersonalCloudPhoneSignIn: () => Promise<void>;
     setPersonalCloudPaused: (paused: boolean) => Promise<PersonalCloudStatus>;
     getPersonalCloudGameState: (
       shop: GameShop,

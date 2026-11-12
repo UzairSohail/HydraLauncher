@@ -357,6 +357,12 @@ contextBridge.exposeInMainWorld("electron", {
   /* Personal cloud saves (Cloud Save Manager) */
   getPersonalCloudStatus: () => ipcRenderer.invoke("getPersonalCloudStatus"),
   signInPersonalCloud: () => ipcRenderer.invoke("signInPersonalCloud"),
+  beginPersonalCloudPhoneSignIn: () =>
+    ipcRenderer.invoke("beginPersonalCloudPhoneSignIn"),
+  finishPersonalCloudPhoneSignIn: () =>
+    ipcRenderer.invoke("finishPersonalCloudPhoneSignIn"),
+  cancelPersonalCloudPhoneSignIn: () =>
+    ipcRenderer.invoke("cancelPersonalCloudPhoneSignIn"),
   setPersonalCloudPaused: (paused: boolean) =>
     ipcRenderer.invoke("setPersonalCloudPaused", paused),
   getPersonalCloudGameState: (shop: GameShop, objectId: string) =>
@@ -408,6 +414,7 @@ contextBridge.exposeInMainWorld("electron", {
     return () =>
       ipcRenderer.removeListener("on-settings-sync-status", listener);
   },
+  getSyncOverview: () => ipcRenderer.invoke("getSyncOverview"),
   /* Phone app link (Google Drive) */
   getCompanionLinkStatus: () => ipcRenderer.invoke("getCompanionLinkStatus"),
   setCompanionLinkEnabled: (enabled: boolean) =>

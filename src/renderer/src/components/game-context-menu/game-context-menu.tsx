@@ -2,7 +2,6 @@ import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  AuthPage,
   applyLibraryGroupAction,
   getRemoveFilesTarget,
   isLibraryGameDownloading,
@@ -313,22 +312,21 @@ export function GameContextMenu({
       closeOnClick: false,
       disabled: isDeleting,
     })),
-    {
-      id: "collection-create",
-      label: t("create_collection"),
-      icon: <PlusIcon size={16} />,
-      separator: collections.length > 0,
-      onClick: () => {
-        if (!userDetails) {
-          window.electron.openAuthWindow(AuthPage.SignIn);
-          return;
-        }
-
-        setShowCreateCollectionModal(true);
-      },
-      closeOnClick: false,
-      disabled: isDeleting || Boolean(pendingCollectionId),
-    },
+    // Collections live in a Hydra account, which Nacho Launcher can't sign
+    // in to, so creating one is only offered to a signed-in session.
+    ...(userDetails
+      ? [
+          {
+            id: "collection-create",
+            label: t("create_collection"),
+            icon: <PlusIcon size={16} />,
+            separator: collections.length > 0,
+            onClick: () => setShowCreateCollectionModal(true),
+            closeOnClick: false,
+            disabled: isDeleting || Boolean(pendingCollectionId),
+          },
+        ]
+      : []),
   ];
 
   const items: ContextMenuItemData[] = [

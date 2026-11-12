@@ -26,7 +26,6 @@ import {
   NavigationDiagnostics,
   VerticalFocusGroup,
   BigPictureToastHost,
-  CloudGiftNotificationModal,
   MissingScreenshotsToast,
   ScreenshotUploadFailureToast,
   VirtualKeyboardProvider,
@@ -247,7 +246,6 @@ export default function App() {
           <InputModeProvider />
           <NavigationDiagnostics />
           <BigPictureToastHost />
-          <CloudGiftNotificationModal />
           <MissingScreenshotsToast />
           <ScreenshotUploadFailureToast />
         </div>
