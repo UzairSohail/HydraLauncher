@@ -175,8 +175,7 @@ export default function Notifications() {
 
   const visibleApiNotifications = useMemo(() => {
     const isShown = ({ type }: Notification) => {
-      if (isLeaderboardNotificationType(type))
-        return isFeatureEnabled(Feature.GlobalLeaderboards);
+      if (isLeaderboardNotificationType(type)) return false;
       if (!isScreenshotNotificationType(type)) return true;
       if (!isFeatureEnabled(Feature.Screenshots)) return false;
       return (

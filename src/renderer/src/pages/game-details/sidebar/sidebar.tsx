@@ -16,7 +16,6 @@ import {
   useDate,
   useFeature,
   useFormat,
-  useGlobalLeaderboardsFeature,
   useUserDetails,
 } from "@renderer/hooks";
 import {
@@ -37,7 +36,6 @@ import { GameLanguageSection } from "./game-language-section";
 import { isAchievementConcealed } from "@shared";
 import { ControllerSupportSection } from "./controller-support-section";
 import { GameScreenshots } from "../game-screenshots/game-screenshots";
-import { LeaderboardSection } from "../leaderboard/leaderboard-section";
 import { AchievementsSkeletonList } from "./achievements-skeleton-list";
 import { AchievementSyncStatus } from "./achievement-sync-status";
 
@@ -152,8 +150,6 @@ export function Sidebar() {
   const { t } = useTranslation("game_details");
   const { formatDateTime } = useDate();
   const { numberFormatter } = useFormat();
-  const { isEnabled: isGlobalLeaderboardsEnabled } =
-    useGlobalLeaderboardsFeature();
   const achievementsCount = achievements?.length ?? 0;
   const shouldRenderAchievementsSection =
     (!!userDetails && achievementsCount > 0) ||
@@ -355,8 +351,6 @@ export function Sidebar() {
           </ul>
         </SidebarSection>
       )}
-
-      {isGlobalLeaderboardsEnabled && <LeaderboardSection />}
 
       {stats && (
         <SidebarSection title={t("stats")}>

@@ -7,6 +7,7 @@ import type {
   ScreenshotUploadProgress,
   SystemPowerAction,
   AppUpdaterEvent,
+  ManualUpdateCheckResult,
   GameShop,
   Steam250Game,
   DownloadProgress,
@@ -1424,6 +1425,7 @@ declare global {
       cb: (event: AppUpdaterEvent) => void
     ) => () => Electron.IpcRenderer;
     checkForUpdates: () => Promise<boolean>;
+    checkForUpdatesManually: () => Promise<ManualUpdateCheckResult>;
     restartAndInstallUpdate: () => Promise<void>;
 
     /* Auth */

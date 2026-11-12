@@ -50,7 +50,6 @@ import { CloudGiftNotificationModal } from "./pages/shared-modals/cloud-gift-not
 import { LevelUpModal } from "./components/gamification";
 import { useMissingScreenshotsToast } from "./hooks/use-missing-screenshots-toast";
 import { useScreenshotUploadFailureToast } from "./hooks/use-screenshot-upload-failure-toast";
-import { LeaderboardNotificationLayer } from "./components/leaderboard-notification/leaderboard-notification-layer";
 import { playMessageSound } from "./pages/chat-window/chat-sounds";
 import { usePersonalCloudSyncToasts } from "./pages/game-details/personal-cloud";
 
@@ -249,7 +248,6 @@ export function App() {
         });
 
         workwonders.changelog.initChangelogWidget();
-        workwonders.changelog.initChangelogWidgetMini();
         const workWondersWithKnowledge =
           workwonders as WorkWondersWithKnowledge;
         workWondersWithKnowledge.knowledge?.initKnowledgeWidget?.();
@@ -796,8 +794,6 @@ export function App() {
       />
 
       <CloudGiftNotificationModal />
-
-      <LeaderboardNotificationLayer />
 
       <ArchiveDeletionModal
         visible={showArchiveDeletionModal}

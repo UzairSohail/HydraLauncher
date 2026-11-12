@@ -74,6 +74,16 @@
       color: globals.$muted-color;
       background-color: rgba(255, 255, 255, 0.1);
     }
+
+    &--busy {
+      cursor: progress;
+      opacity: 0.8;
+    }
+
+    &--ready {
+      border-color: globals.$brand-teal;
+      color: globals.$brand-teal;
+    }
   }
 
   &__navigation {
