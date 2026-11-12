@@ -406,6 +406,10 @@ export function SidebarProfile() {
     return <SteamLogo />;
   };
 
+  // Nacho Launcher has no Hydra account sign-in, so the profile button only
+  // appears for a session that's somehow already signed in.
+  if (!userDetails) return null;
+
   return (
     <div className="sidebar-profile" ref={containerRef}>
       <button

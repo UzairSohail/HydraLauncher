@@ -808,6 +808,7 @@ export default function Library() {
                 hiddenCollectionId={HIDDEN_COLLECTION_ID}
                 onCollectionSelect={handleCollectionSelect}
                 onCollectionCreate={handleCreateCollectionButtonClick}
+                canCreateCollection={Boolean(userDetails)}
                 onCollectionContextMenu={openCollectionContextMenu}
                 showSources={showSourceFilter}
                 sources={availableSources}

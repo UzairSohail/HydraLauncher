@@ -40,14 +40,9 @@ import {
 } from "@renderer/features";
 import { useTranslation } from "react-i18next";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useSubscription } from "./hooks/use-subscription";
 import { ArchiveDeletionModal } from "./pages/downloads/archive-deletion-error-modal";
-import { CloudSubscriptionModal } from "./pages/shared-modals/hydra-cloud/cloud-subscription-modal";
-import { AddFriendModal } from "./pages/profile/profile-content/add-friend-modal";
 import { ClassicsScanModal } from "./pages/settings/emulation/classics-scan-modal";
 import { RetroArchScanModal } from "./pages/settings/emulation/retroarch-scan-modal";
-import { CloudGiftNotificationModal } from "./pages/shared-modals/cloud-gift-notification-modal";
-import { LevelUpModal } from "./components/gamification";
 import { GoogleSignInPrompt } from "./components/google-sign-in-prompt";
 import { useMissingScreenshotsToast } from "./hooks/use-missing-screenshots-toast";
 import { useScreenshotUploadFailureToast } from "./hooks/use-screenshot-upload-failure-toast";
@@ -114,9 +109,6 @@ export function App() {
   useGamificationFeatureSync();
   useGamificationProgressSync();
 
-  const { hideHydraCloudModal, isHydraCloudModalVisible, hydraCloudFeature } =
-    useSubscription();
-
   const dispatch = useAppDispatch();
 
   const navigate = useNavigate();
@@ -142,7 +134,6 @@ export function App() {
   const [showArchiveDeletionModal, setShowArchiveDeletionModal] =
     useState(false);
   const [archivePaths, setArchivePaths] = useState<string[]>([]);
-  const [showAddFriendModal, setShowAddFriendModal] = useState(false);
 
   useEffect(() => {
     Promise.all([window.electron.getUserPreferences(), updateLibrary()]).then(
@@ -689,14 +680,6 @@ export function App() {
   }, [navigate]);
 
   useEffect(() => {
-    const unsubscribe = globalThis.electron.onOpenAddFriendModal(() => {
-      setShowAddFriendModal(true);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
     const unsubscribe = globalThis.electron.onShowToast((toast) => {
       dispatch(showToast(toast));
     });
@@ -786,25 +769,10 @@ export function App() {
         duration={toast.duration}
       />
 
-      <LevelUpModal />
-
-      <CloudSubscriptionModal
-        visible={isHydraCloudModalVisible}
-        onClose={hideHydraCloudModal}
-        feature={hydraCloudFeature || undefined}
-      />
-
-      <CloudGiftNotificationModal />
-
       <ArchiveDeletionModal
         visible={showArchiveDeletionModal}
         archivePaths={archivePaths}
         onClose={() => setShowArchiveDeletionModal(false)}
-      />
-
-      <AddFriendModal
-        visible={showAddFriendModal}
-        onClose={() => setShowAddFriendModal(false)}
       />
 
       <GoogleSignInPrompt />
