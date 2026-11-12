@@ -3,9 +3,7 @@ import { useTranslation } from "react-i18next";
 import {
   DownloadIcon,
   FileDirectoryIcon,
-  HistoryIcon,
   KebabHorizontalIcon,
-  PackageDependenciesIcon,
   PlayIcon,
   SyncIcon,
   TrashIcon,
@@ -13,7 +11,6 @@ import {
 import { Disc3, XCircle } from "lucide-react";
 import type {
   LibraryGame,
-  RecompilationActionResult,
   RecompilationDetails,
   RecompilationReleaseAsset,
 } from "@types";
@@ -31,8 +28,6 @@ import {
 } from "./use-recompilation-install";
 import type { RecompilationRom } from "./use-recompilation-rom";
 import { RecompilationPlaytime } from "./recompilation-playtime";
-import { useRecompilationUpdates } from "./use-recompilation-updates";
-import { UpdateSourcesModal } from "./update-sources-modal";
 import "@renderer/components/setup-modal/setup-modal.scss";
 import "../game-details/hero.scss";
 
@@ -60,9 +55,6 @@ export function RecompilationHero({
   const { t } = useTranslation("recompilation");
   const { showErrorToast } = useToast();
   const [isUninstallOpen, setIsUninstallOpen] = useState(false);
-  const [isSourcesOpen, setIsSourcesOpen] = useState(false);
-  const [isRollbackOpen, setIsRollbackOpen] = useState(false);
-  const updates = useRecompilationUpdates(details.game.objectId, details.slug);
 
   const { state, progress } = install;
   const isDownloading = progress?.phase === "downloading";
@@ -70,14 +62,7 @@ export function RecompilationHero({
     progress?.phase === "extracting" ||
     (Boolean(state?.isInstalling) && !isDownloading);
   const isInstalled = state?.installed === true;
-  const hasUpdate =
-    isInstalled &&
-    (updates.state
-      ? updates.bestSource !== null
-      : state.version !== details.version);
-  const previousVersion = isInstalled
-    ? (updates.state?.previousVersion ?? null)
-    : null;
+  const hasUpdate = isInstalled && state.version !== details.version;
   const handlesRom = rom.state?.handlesRom === true;
   const needsRomChoice =
     handlesRom && !rom.state?.romPath && !rom.state?.isReady;
@@ -87,34 +72,10 @@ export function RecompilationHero({
     if (prepareFailed) showErrorToast(t("prepare_failed"));
   }, [prepareFailed, showErrorToast, t]);
 
-  const handleInstallResult = (result: RecompilationActionResult) => {
+  const runUpdate = async () => {
+    const result = await install.install();
     if (!result.ok && result.reason !== "already_installing") {
       showErrorToast(t(getInstallErrorKey(result.reason)));
-    }
-    if (result.preparing) onOpenInstall();
-  };
-
-  const runUpdate = async () => {
-    const { bestSource } = updates;
-    if (bestSource && !bestSource.installAsset) {
-      setIsSourcesOpen(true);
-      return;
-    }
-    handleInstallResult(
-      bestSource
-        ? await updates.installFrom(bestSource.id)
-        : await install.install()
-    );
-  };
-
-  const runRollback = async () => {
-    setIsRollbackOpen(false);
-    const result = await updates.rollback();
-    if (!result.ok) {
-      showErrorToast(
-        t(result.reason === "running" ? "install_running" : "rollback_failed")
-      );
-      return;
     }
     if (result.preparing) onOpenInstall();
   };
@@ -233,30 +194,6 @@ export function RecompilationHero({
               onClick: () => void install.openFolder(),
             },
             {
-              icon: <PackageDependenciesIcon />,
-              label: t("update_sources_menu"),
-              onClick: () => setIsSourcesOpen(true),
-            },
-            ...(previousVersion
-              ? [
-                  {
-                    icon: <HistoryIcon />,
-                    label: t("rollback_to", { version: previousVersion }),
-                    onClick: () => setIsRollbackOpen(true),
-                    disabled: install.isRunning || install.isPreparing,
-                  },
-                ]
-              : []),
-            ...((updates.state?.saveSnapshotCount ?? 0) > 0
-              ? [
-                  {
-                    icon: <FileDirectoryIcon />,
-                    label: t("open_save_backups"),
-                    onClick: () => void updates.openSnapshots(),
-                  },
-                ]
-              : []),
-            {
               icon: <DownloadIcon />,
               label: t("download_options"),
               onClick: onDownloadRom,
@@ -313,23 +250,6 @@ export function RecompilationHero({
           </div>
         </div>
       </div>
-
-      <UpdateSourcesModal
-        visible={isSourcesOpen}
-        onClose={() => setIsSourcesOpen(false)}
-        updates={updates}
-        onInstallResult={handleInstallResult}
-      />
-
-      <ConfirmationModal
-        visible={isRollbackOpen}
-        title={t("rollback_title", { version: previousVersion ?? "" })}
-        descriptionText={t("rollback_description")}
-        confirmButtonLabel={t("rollback")}
-        cancelButtonLabel={t("cancel")}
-        onConfirm={runRollback}
-        onClose={() => setIsRollbackOpen(false)}
-      />
 
       <ConfirmationModal
         visible={isUninstallOpen}
