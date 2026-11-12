@@ -268,6 +268,8 @@ jobs:
           gh api --paginate "repos/$GH_REPO/releases" --jq '.[] | [.id, .tag_name] | @tsv' |
           while IFS=$'\t' read -r id tag; do
             [ "$tag" = "$TAG" ] && continue
+            # The phone app has its own release (phone-app.yml).
+            [ "$tag" = "phone-app" ] && continue
             echo "Deleting release $tag"
             gh api -X DELETE "repos/$GH_REPO/releases/$id"
             gh api -X DELETE "repos/$GH_REPO/git/refs/tags/$tag" || true

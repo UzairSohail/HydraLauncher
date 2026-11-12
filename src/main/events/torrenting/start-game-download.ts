@@ -18,7 +18,7 @@ import {
   prepareGameEntry,
 } from "@main/helpers";
 
-const startGameDownload = async (
+export const startGameDownload = async (
   _event: Electron.IpcMainInvokeEvent,
   payload: StartGameDownloadPayload
 ) => {

@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Nacho",
+    "slug": "nacho-companion",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0d0d0f",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.nacho.companion"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-image",
+      "expo-build-properties",
+      "@react-native-google-signin/google-signin"
+    ],
+    "scheme": "nacho",
+    "backgroundColor": "#0d0d0f"
+  }
+}
