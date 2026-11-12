@@ -1,11 +1,11 @@
-# Nacho phone app
+# Nacho Companion (phone app)
 
 An Android app (in `companion/`) that links to your launchers through your
 Google Drive. From your phone you can:
 
 - browse and search the catalogue,
 - see each computer's library and what's installed,
-- queue a download on a chosen computer, or on whichever computer opens Nacho
+- queue a download on a chosen computer, or on whichever computer opens Nacho Launcher
   first, from the download option you pick,
 - follow queued downloads,
 - add and remove download sources for all your computers.
@@ -34,11 +34,11 @@ debrid service (AllDebrid first) when one is set up, otherwise a direct
 download. Torrents are only ever downloaded through debrid. If something else is
 downloading, the game is added to the queue.
 
-For "first computer to open Nacho" requests, a launcher writes a claim in its
+For "first computer to open Nacho Launcher" requests, a launcher writes a claim in its
 own file, waits 30 seconds, and goes ahead only if no other computer claimed it
 earlier.
 
-Settings > Integrations > **Phone app** on each computer sets the name the phone
+Settings > Integrations > **Nacho Companion** on each computer sets the name the phone
 shows and can turn off downloads from the phone for that computer.
 
 The file formats are in `src/shared/companion.ts`, which both apps use.
@@ -88,7 +88,7 @@ APK over the old one, and Google needs the new fingerprint.
 
 ### 3. Build
 
-Actions > **Phone app** > Run workflow. It publishes `Nacho.apk` as the
+Actions > **Nacho Companion** > Run workflow. It publishes `NachoCompanion.apk` as the
 `phone-app` pre-release, replacing the previous build. The desktop Release
 workflow and the launcher's auto-update ignore that release.
 

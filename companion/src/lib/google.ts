@@ -46,7 +46,7 @@ export const signIn = async (): Promise<GoogleAccount | null> => {
   if (!result.data.scopes.includes(DRIVE_SCOPE)) {
     const added = await GoogleSignin.addScopes({ scopes: [DRIVE_SCOPE] });
     if (added?.type !== "success") {
-      throw new Error("Nacho needs access to its Google Drive files to work.");
+      throw new Error("Nacho Launcher needs access to its Google Drive files to work.");
     }
   }
   return toAccount(result.data.user);

@@ -178,7 +178,7 @@ export function AppTitleBar({
       <div className="title-bar__brand">
         {hasCustomFrame && (
           <h4>
-            Nacho
+            Nacho Launcher
             {hasActiveSubscription && (
               <span className="title-bar__cloud-text"> Cloud</span>
             )}

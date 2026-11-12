@@ -32,10 +32,10 @@ function SignInGate() {
     return (
       <View style={[styles.screen, { justifyContent: "center", padding: 24, gap: 16 }]}>
         <Text style={{ color: colors.text, fontSize: 28, fontWeight: "700" }}>
-          Nacho
+          Nacho Companion
         </Text>
         <Text style={styles.body}>
-          Sign in with the same Google account your launcher uses for cloud
+          Sign in with the same Google account Nacho Launcher uses for cloud
           saves. Your phone and your computers talk through that account's
           Google Drive, so there's nothing else to set up.
         </Text>

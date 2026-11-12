@@ -95,13 +95,13 @@ export default function GameScreen() {
 
   const targetName =
     target === ANY_DEVICE
-      ? "the first computer to open Nacho"
+      ? "the first computer to open Nacho Launcher"
       : targets.find((device) => device.id === target)?.name ?? "this computer";
 
   const queue = (repack: Repack) => {
     Alert.alert(
       "Queue this download?",
-      `${repack.title}\n\nIt starts on ${targetName} the next time Nacho is open there.`,
+      `${repack.title}\n\nIt starts on ${targetName} the next time Nacho Launcher is open there.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -178,7 +178,7 @@ export default function GameScreen() {
           <Text style={styles.title}>Download on</Text>
           {targets.length === 0 ? (
             <Text style={styles.small}>
-              No computer is taking downloads from the phone yet. Open Nacho on
+              No computer is taking downloads from the phone yet. Open Nacho Launcher on
               one signed in to the same Google account.
             </Text>
           ) : (
@@ -193,7 +193,7 @@ export default function GameScreen() {
               ))}
               {targets.length > 1 && (
                 <Chip
-                  label="First to open Nacho"
+                  label="First to open Nacho Launcher"
                   selected={target === ANY_DEVICE}
                   onPress={() => setTarget(ANY_DEVICE)}
                 />

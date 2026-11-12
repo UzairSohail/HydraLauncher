@@ -52,7 +52,7 @@ export const requestStatus = (
 export const describeState = (view: RequestView, targetName: string) => {
   switch (view.state) {
     case "waiting":
-      return `Starts when Nacho opens on ${targetName}`;
+      return `Starts when Nacho Launcher opens on ${targetName}`;
     case "claimed":
       return `${targetName} is taking this`;
     case "queued":

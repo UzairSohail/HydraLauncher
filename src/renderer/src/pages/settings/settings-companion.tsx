@@ -10,7 +10,7 @@ import {
   SettingsIntegrationLastSynced,
 } from "./settings-integration-card";
 
-/** Lets the Nacho phone app see this computer and queue downloads on it. */
+/** Lets the Nacho Companion phone app see this computer and queue downloads on it. */
 export function SettingsCompanion() {
   const { t } = useTranslation("personal_cloud");
   const [status, setStatus] = useState<CompanionLinkStatus | null>(null);

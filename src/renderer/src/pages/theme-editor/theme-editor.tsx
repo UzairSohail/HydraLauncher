@@ -65,7 +65,7 @@ export default function ThemeEditor() {
   }, [t, i18n.language, notificationVariation, notificationAlignment]);
 
   useEffect(() => {
-    window.document.title = "Nacho - Theme Editor";
+    window.document.title = "Nacho Launcher - Theme Editor";
   }, []);
 
   useEffect(() => {

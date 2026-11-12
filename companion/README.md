@@ -1,4 +1,4 @@
-# Nacho phone app
+# Nacho Companion
 
 Android app that links to Nacho Launcher through Google Drive: browse the
 catalogue, see your libraries, queue downloads on a chosen computer and manage

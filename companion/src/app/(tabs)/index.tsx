@@ -130,7 +130,7 @@ export default function CatalogueScreen() {
               title={query ? "No games found" : "Nothing here yet"}
               detail={
                 sourceIds.length === 0
-                  ? "Open Nacho on a computer once so the phone knows your download sources."
+                  ? "Open Nacho Launcher on a computer once so the phone knows your download sources."
                   : undefined
               }
             />
