@@ -1,19 +1,9 @@
-import { updateGameRecord } from "@main/services/game-record-updater";
 import { registerEvent } from "../register-event";
-import { createGame } from "@main/services/library-sync";
 import { gamesSublevel, levelKeys } from "@main/level";
-import { HydraApi, logger } from "@main/services";
-import { pickLibraryCollectionPositions } from "@shared";
+import { logger } from "@main/services";
+import { GameCollections } from "@main/services/game-collections";
+import { SettingsSync } from "@main/services/settings-sync";
 import type { GameShop } from "@types";
-
-const isGameNotFoundError = (error: unknown) => {
-  if (typeof error !== "object" || error === null) return false;
-
-  const response = (error as { response?: { data?: { message?: unknown } } })
-    .response;
-
-  return response?.data?.message === "game/not-found";
-};
 
 const assignGameToCollection = async (
   _event: Electron.IpcMainInvokeEvent,
@@ -21,39 +11,15 @@ const assignGameToCollection = async (
   objectId: string,
   collectionIds: string[]
 ) => {
-  const gameKey = levelKeys.game(shop, objectId);
-  const game = await gamesSublevel.get(gameKey);
+  const game = await gamesSublevel.get(levelKeys.game(shop, objectId));
 
   if (!game) {
     throw new Error("game/not-found-local");
   }
 
   try {
-    if (shop !== "custom") {
-      const syncCollection = () =>
-        HydraApi.put(`/profile/games/${shop}/${objectId}/collection`, {
-          collectionIds,
-        });
-
-      try {
-        await syncCollection();
-      } catch (error) {
-        if (!isGameNotFoundError(error)) {
-          throw error;
-        }
-
-        await createGame(game);
-        await syncCollection();
-      }
-    }
-
-    await updateGameRecord(gameKey, (latest) => ({
-      collectionIds,
-      collectionPositions: pickLibraryCollectionPositions(
-        latest.collectionPositions,
-        collectionIds
-      ),
-    }));
+    await GameCollections.assign(shop, objectId, collectionIds);
+    SettingsSync.scheduleSync();
   } catch (error) {
     logger.error("Failed to assign game to collection", error);
     throw new Error(`Failed to assign game to collection: ${error}`);

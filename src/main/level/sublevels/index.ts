@@ -8,6 +8,7 @@ export * from "./game-stats-cache";
 export * from "./catalogue-names-cache";
 export * from "./keys";
 export * from "./themes";
+export * from "./game-collections";
 export * from "./download-sources";
 export * from "./download-sources-check-timestamp";
 export * from "./local-notifications";

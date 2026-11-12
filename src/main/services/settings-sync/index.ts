@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { safeStorage } from "electron";
 
 import type {
+  LocalGameCollection,
   SettingsSyncError,
   SettingsSyncStatus,
   Theme,
@@ -31,8 +32,10 @@ import {
   type SettingsSyncDocument,
   type SettingsSyncState,
   type SyncedDownloadSource,
+  type SyncedGameCollection,
   type SyncedTheme,
 } from "./settings-document";
+import { GameCollections } from "../game-collections";
 import { recordCollection, recordLocalValues } from "./sync-merge";
 import { describeSettingsSyncError } from "./sync-error";
 import { SYNCED_SECRET_KEYS } from "./synced-keys";
@@ -49,7 +52,11 @@ interface LocalSyncRecord {
   lastChangeFromDevice: string | null;
   state: SettingsSyncState;
   /** Keys this device actually had after the last sync. */
-  localKeys: { downloadSources: string[]; themes: string[] };
+  localKeys: {
+    downloadSources: string[];
+    themes: string[];
+    gameCollections: string[];
+  };
 }
 
 interface StoredKey {
@@ -65,7 +72,7 @@ const newRecord = (): LocalSyncRecord => ({
   lastSyncedAt: null,
   lastChangeFromDevice: null,
   state: emptySettingsSyncState(),
-  localKeys: { downloadSources: [], themes: [] },
+  localKeys: { downloadSources: [], themes: [], gameCollections: [] },
 });
 
 const toSyncedTheme = (theme: Theme): SyncedTheme => ({
@@ -78,8 +85,9 @@ const toSyncedTheme = (theme: Theme): SyncedTheme => ({
 });
 
 /**
- * Syncs settings, API keys, download sources and themes through the user's
- * Google Drive, using the Google sign-in shared with Cloud Save Manager. The
+ * Syncs settings, API keys, download sources, themes and library collections
+ * through the user's Google Drive, using the Google sign-in shared with Cloud
+ * Save Manager. The
  * file is `hydra/settings.json`; credentials inside it are sealed with a key
  * kept next to it in `hydra/sync-key`.
  */
@@ -102,6 +110,7 @@ export class SettingsSync {
         ...newRecord(),
         ...stored,
         state: { ...emptySettingsSyncState(), ...stored.state },
+        localKeys: { ...newRecord().localKeys, ...stored.localKeys },
       };
     }
 
@@ -198,10 +207,11 @@ export class SettingsSync {
 
   /** Stamps whatever changed on this device since the last sync. */
   private static async recordLocal(record: LocalSyncRecord, now: number) {
-    const [preferences, sources, themes] = await Promise.all([
+    const [preferences, sources, themes, collections] = await Promise.all([
       getUserPreferences(),
       downloadSourcesSublevel.values().all(),
       themesSublevel.values().all(),
+      GameCollections.all(),
     ]);
 
     const sourceItems: Record<string, SyncedDownloadSource> = {};
@@ -210,6 +220,10 @@ export class SettingsSync {
     }
     const themeItems: Record<string, SyncedTheme> = {};
     for (const theme of themes) themeItems[theme.id] = toSyncedTheme(theme);
+    const collectionItems: Record<string, SyncedGameCollection> = {};
+    for (const { id, ...collection } of collections) {
+      collectionItems[id] = collection;
+    }
 
     const { deviceId, state, localKeys } = record;
     const secrets = pickSyncedSecrets(preferences);
@@ -239,6 +253,13 @@ export class SettingsSync {
         state.themes,
         themeItems,
         localKeys.themes,
+        now,
+        deviceId
+      ),
+      gameCollections: recordCollection(
+        state.gameCollections,
+        collectionItems,
+        localKeys.gameCollections,
         now,
         deviceId
       ),
@@ -275,6 +296,31 @@ export class SettingsSync {
 
     if (incoming.themes.length > 0) {
       await this.applyThemes(merged, incoming.themes);
+    }
+
+    await this.applyGameCollections(merged, incoming.gameCollections);
+  }
+
+  /**
+   * Applies collections from other devices, then lines this device's games up
+   * with them, which also catches games added here since the last sync.
+   */
+  private static async applyGameCollections(
+    merged: SettingsSyncState,
+    ids: string[]
+  ) {
+    const upserts: LocalGameCollection[] = [];
+    const deletedIds: string[] = [];
+    for (const id of ids) {
+      const entry = merged.gameCollections[id];
+      if (entry.deleted || !entry.value) deletedIds.push(id);
+      else upserts.push({ ...entry.value, id });
+    }
+
+    if (upserts.length > 0 || deletedIds.length > 0) {
+      await GameCollections.applySynced(upserts, deletedIds);
+    } else {
+      await GameCollections.reconcile();
     }
   }
 
@@ -395,9 +441,10 @@ export class SettingsSync {
       );
     }
 
-    const [sources, themes] = await Promise.all([
+    const [sources, themes, collectionIds] = await Promise.all([
       downloadSourcesSublevel.values().all(),
       themesSublevel.keys().all(),
+      GameCollections.all().then((items) => items.map((item) => item.id)),
     ]);
     const incomingDevices = Object.entries(incoming).flatMap(
       ([section, keys]) =>
@@ -422,6 +469,7 @@ export class SettingsSync {
       localKeys: {
         downloadSources: sources.map((source) => source.url),
         themes,
+        gameCollections: collectionIds,
       },
     });
   }

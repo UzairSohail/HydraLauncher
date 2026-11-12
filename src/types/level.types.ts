@@ -310,3 +310,17 @@ export interface ScreenState {
   width: number;
   isMaximized: boolean;
 }
+
+/**
+ * A library collection, kept on this device and synced through Google Drive
+ * by settings sync. `games` lists member keys (`shop:objectId`), in the
+ * custom order when `ordered` is set; it can name games this device doesn't
+ * have, so they join the collection once they're added here.
+ */
+export interface LocalGameCollection {
+  id: string;
+  name: string;
+  createdAt: number;
+  ordered: boolean;
+  games: string[];
+}
