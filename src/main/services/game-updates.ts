@@ -28,7 +28,7 @@ import { PersonalCloud } from "./personal-cloud";
 import { LocalNotificationManager } from "./notifications/local-notifications";
 
 const FIRST_CHECK_DELAY_MS = 2 * 60 * 1000;
-const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const DELAY_BETWEEN_GAMES_MS = 500;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
