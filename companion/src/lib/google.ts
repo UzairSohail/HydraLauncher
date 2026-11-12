@@ -54,18 +54,41 @@ export const signIn = async (): Promise<GoogleAccount | null> => {
 
 export const signOut = async () => {
   configure();
+  cachedToken = null;
   await GoogleSignin.signOut();
 };
 
-export const getAccessToken = async () => {
-  configure();
-  const { accessToken } = await GoogleSignin.getTokens();
-  return accessToken;
+/** Google tokens last an hour; reuse one for a bit less than that. */
+const TOKEN_LIFETIME_MS = 45 * 60_000;
+let cachedToken: { value: string; at: number } | null = null;
+let pendingToken: Promise<string> | null = null;
+
+/**
+ * The Drive access token. The sign-in library allows only one getTokens call
+ * at a time, so parallel Drive requests share one call and its result.
+ */
+export const getAccessToken = (): Promise<string> => {
+  if (cachedToken && Date.now() - cachedToken.at < TOKEN_LIFETIME_MS) {
+    return Promise.resolve(cachedToken.value);
+  }
+  pendingToken ??= (async () => {
+    configure();
+    try {
+      const { accessToken } = await GoogleSignin.getTokens();
+      cachedToken = { value: accessToken, at: Date.now() };
+      return accessToken;
+    } finally {
+      pendingToken = null;
+    }
+  })();
+  return pendingToken;
 };
 
 /** Drops a token Google refused, so the next call gets a fresh one. */
-export const forgetAccessToken = (token: string) =>
-  GoogleSignin.clearCachedAccessToken(token).catch(() => null);
+export const forgetAccessToken = async (token: string) => {
+  if (cachedToken?.value === token) cachedToken = null;
+  await GoogleSignin.clearCachedAccessToken(token).catch(() => null);
+};
 
 export const describeSignInError = (error: unknown) => {
   if (isErrorWithCode(error)) {
