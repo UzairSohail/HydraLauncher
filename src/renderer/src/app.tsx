@@ -48,6 +48,7 @@ import { ClassicsScanModal } from "./pages/settings/emulation/classics-scan-moda
 import { RetroArchScanModal } from "./pages/settings/emulation/retroarch-scan-modal";
 import { CloudGiftNotificationModal } from "./pages/shared-modals/cloud-gift-notification-modal";
 import { LevelUpModal } from "./components/gamification";
+import { GoogleSignInPrompt } from "./components/google-sign-in-prompt";
 import { useMissingScreenshotsToast } from "./hooks/use-missing-screenshots-toast";
 import { useScreenshotUploadFailureToast } from "./hooks/use-screenshot-upload-failure-toast";
 import { playMessageSound } from "./pages/chat-window/chat-sounds";
@@ -805,6 +806,8 @@ export function App() {
         visible={showAddFriendModal}
         onClose={() => setShowAddFriendModal(false)}
       />
+
+      <GoogleSignInPrompt />
 
       <ClassicsScanModal />
       <RetroArchScanModal />
