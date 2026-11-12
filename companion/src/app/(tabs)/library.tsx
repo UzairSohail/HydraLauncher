@@ -120,7 +120,7 @@ export default function LibraryScreen() {
               title={devices.length === 0 ? "No computers yet" : "No games"}
               detail={
                 devices.length === 0
-                  ? "Open Nacho on a computer signed in to the same Google account. It shows up here within a couple of minutes."
+                  ? "Open Nacho Launcher on a computer signed in to the same Google account. It shows up here within a couple of minutes."
                   : undefined
               }
             />

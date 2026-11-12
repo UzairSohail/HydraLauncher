@@ -28,7 +28,7 @@ export function WindowTitleBar({
 
   return (
     <header className="window-title-bar" style={titleBarStyle}>
-      <h4>Nacho</h4>
+      <h4>Nacho Launcher</h4>
       <div className="window-title-bar__controls">
         <button
           type="button"

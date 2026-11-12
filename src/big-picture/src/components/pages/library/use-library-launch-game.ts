@@ -28,7 +28,8 @@ const CLASSICS_LAUNCH_ERROR_TOASTS: Record<
   },
   RECOMPILATION_NEEDS_SETUP: {
     title: "PC version not ready",
-    message: "Open this game in Nacho to choose the ROM for its PC version.",
+    message:
+      "Open this game in Nacho Launcher to choose the ROM for its PC version.",
   },
   NO_DISC: {
     title: "No disc found",
@@ -66,7 +67,7 @@ export function useLibraryLaunchGame(
           if (code === "RECOMPILATION_ALREADY_RUNNING") return;
           const toast = (code && CLASSICS_LAUNCH_ERROR_TOASTS[code]) || {
             title: "Launch failed",
-            message: "Nacho could not launch this Classics game.",
+            message: "Nacho Launcher could not launch this Classics game.",
           };
           showErrorToast(toast.title, { message: toast.message });
         }

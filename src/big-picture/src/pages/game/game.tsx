@@ -153,7 +153,7 @@ interface ClassicsLaunchNotice {
 
 const CLASSICS_LAUNCH_FALLBACK: ClassicsLaunchNotice = {
   title: "Launch failed",
-  message: "Nacho could not launch this Classics game.",
+  message: "Nacho Launcher could not launch this Classics game.",
   kind: "error",
 };
 

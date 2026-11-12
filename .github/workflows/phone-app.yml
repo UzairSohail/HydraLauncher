@@ -1,11 +1,11 @@
-name: Phone app
+name: Nacho Companion
 
 # Builds the Android phone app (companion/) and publishes the APK as the
 # "phone-app" release, replacing the previous one. It's a pre-release so the
 # launcher's auto-update never mistakes it for a desktop version, and the
 # desktop Release workflow leaves it alone.
 #
-# Runs only when started by hand (Actions > Phone app > Run workflow).
+# Runs only when started by hand (Actions > Nacho Companion > Run workflow).
 #
 # Needs these repository secrets (see docs/companion-app.md):
 #   ANDROID_KEYSTORE_BASE64    the signing keystore, base64 encoded
@@ -96,16 +96,16 @@ jobs:
           "$build_tools/apksigner" sign \
             --ks "$RUNNER_TEMP/nacho.jks" --ks-key-alias nacho \
             --ks-pass env:PASSWORD --key-pass env:PASSWORD \
-            --out "$RUNNER_TEMP/Nacho.apk" \
+            --out "$RUNNER_TEMP/NachoCompanion.apk" \
             android/app/build/outputs/apk/release/app-release.apk
-          "$build_tools/apksigner" verify --print-certs "$RUNNER_TEMP/Nacho.apk" | grep -i "SHA-1"
+          "$build_tools/apksigner" verify --print-certs "$RUNNER_TEMP/NachoCompanion.apk" | grep -i "SHA-1"
           rm "$RUNNER_TEMP/nacho.jks"
 
       - name: Publish the release
         run: |
           gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$TAG" "$RUNNER_TEMP/Nacho.apk" \
+          gh release create "$TAG" "$RUNNER_TEMP/NachoCompanion.apk" \
             --target "${{ github.sha }}" \
-            --title "Nacho phone app (build ${{ github.run_number }})" \
-            --notes "Android phone app for Nacho Launcher. Install Nacho.apk on your phone (allow installs from your browser when asked). Sign in with the same Google account as the launcher." \
+            --title "Nacho Companion (build ${{ github.run_number }})" \
+            --notes "Nacho Companion, the Android phone app for Nacho Launcher. Install NachoCompanion.apk on your phone (allow installs from your browser when asked). Sign in with the same Google account as the launcher." \
             --prerelease --latest=false

@@ -28,7 +28,7 @@ export default function DevicesScreen() {
   const forget = (id: string, name: string) =>
     Alert.alert(
       `Forget ${name}?`,
-      "Use this for a computer you no longer use. If Nacho opens on it again it comes back.",
+      "Use this for a computer you no longer use. If Nacho Launcher opens on it again it comes back.",
       [
         { text: "Keep", style: "cancel" },
         {
@@ -65,14 +65,14 @@ export default function DevicesScreen() {
         {devices.length === 0 && !loading && (
           <Empty
             title="No computers yet"
-            detail="Open Nacho on a computer signed in to the same Google account, and check Settings > Integrations > Phone app there."
+            detail="Open Nacho Launcher on a computer signed in to the same Google account, and check Settings > Integrations > Nacho Companion there."
           />
         )}
         {devices.map((device) => (
           <View key={device.id} style={styles.card}>
             <Text style={styles.title}>{device.name}</Text>
             <Text style={styles.small}>
-              {PLATFORMS[device.platform] ?? device.platform} · Nacho{" "}
+              {PLATFORMS[device.platform] ?? device.platform} · Nacho Launcher{" "}
               {device.appVersion} · seen {formatAgo(device.lastSeen)}
             </Text>
             <Text style={styles.body}>
