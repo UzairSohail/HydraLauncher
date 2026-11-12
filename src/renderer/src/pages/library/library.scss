@@ -115,6 +115,35 @@
     overflow: hidden;
   }
 
+  &__updates-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: globals.$spacing-unit;
+    margin: 0 0 calc(globals.$spacing-unit * 2);
+    padding: globals.$spacing-unit calc(globals.$spacing-unit * 1.5);
+    border: 1px solid rgba(globals.$brand-teal, 0.35);
+    border-radius: 8px;
+    background: rgba(globals.$brand-teal, 0.08);
+    color: globals.$muted-color;
+    font-size: 14px;
+  }
+
+  &__updates-banner-icon {
+    color: globals.$brand-teal;
+    flex-shrink: 0;
+  }
+
+  &__updates-banner-text {
+    font-weight: 500;
+  }
+
+  &__updates-banner-actions {
+    display: flex;
+    gap: globals.$spacing-unit;
+    margin-left: auto;
+  }
+
   &__actions {
     display: flex;
     align-items: center;

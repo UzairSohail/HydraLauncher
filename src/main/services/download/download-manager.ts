@@ -60,7 +60,6 @@ import fs from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import os from "node:os";
 import { logger } from "../logger";
-import { GameUpdates } from "../game-updates";
 import { db, downloadsSublevel, gamesSublevel, levelKeys } from "@main/level";
 import { TorBoxClient } from "./torbox";
 import { TorBoxBatchDownloader } from "./torbox-batch-downloader";
@@ -1108,9 +1107,13 @@ export class DownloadManager {
       }
     } else {
       const gameFilesManager = new GameFilesManager(game.shop, game.objectId);
-      await GameUpdates.finishUpdate(game.shop, game.objectId).catch((error) =>
-        logger.error("[DownloadManager] Failed to finish game update", error)
-      );
+      await import("../game-updates")
+        .then(({ GameUpdates }) =>
+          GameUpdates.finishUpdate(game.shop, game.objectId)
+        )
+        .catch((error) =>
+          logger.error("[DownloadManager] Failed to finish game update", error)
+        );
       gameFilesManager.searchAndBindExecutable();
       void gameFilesManager.autoLinkClassicsDiscs();
     }

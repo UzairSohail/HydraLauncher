@@ -5,7 +5,6 @@ import { isDebridPendingError } from "./download/debrid-files";
 import { getDebridRemoteProgress } from "./download/debrid-remote-progress";
 import { WindowManager } from "./window-manager";
 import { logger } from "./logger";
-import { GameUpdates } from "./game-updates";
 import { Downloader } from "@shared";
 import {
   DEFAULT_DOWNLOAD_LAYOUT_STATE,
@@ -1390,9 +1389,13 @@ export class DownloadOrchestrator {
       debridPreparationDeadline: undefined,
     });
     // A cancelled update leaves the version it was replacing in place.
-    await GameUpdates.restorePreviousVersion(shop, objectId).catch((error) =>
-      logger.error("Failed to restore the version an update replaced", error)
-    );
+    await import("./game-updates")
+      .then(({ GameUpdates }) =>
+        GameUpdates.restorePreviousVersion(shop, objectId)
+      )
+      .catch((error) =>
+        logger.error("Failed to restore the version an update replaced", error)
+      );
 
     const downloads = await this.getAllDownloads();
     await removeDownloadFromLayoutState(

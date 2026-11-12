@@ -13,7 +13,6 @@ import axios from "axios";
 import { db, gamesSublevel, levelKeys } from "@main/level";
 import { CloudSync } from "./cloud-sync";
 import { PersonalCloud } from "./personal-cloud";
-import { GameUpdates } from "./game-updates";
 import { logger, networkLogger } from "./logger";
 import { PowerSaveBlockerManager } from "./power-save-blocker";
 import path from "node:path";
@@ -772,7 +771,13 @@ const onCloseGame = (game: Game, options: { isShutdown?: boolean } = {}) => {
   // An update that finished while this game was running can now remove the
   // old version, once its files are no longer in use.
   if (game.previousInstall && !options.isShutdown) {
-    setTimeout(() => void GameUpdates.finishCompletedUpdates(), 10_000);
+    setTimeout(
+      () =>
+        void import("./game-updates").then(({ GameUpdates }) =>
+          GameUpdates.finishCompletedUpdates()
+        ),
+      10_000
+    );
   }
 
   if (game.shop === "custom") return;

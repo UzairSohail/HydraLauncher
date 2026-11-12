@@ -14,7 +14,7 @@ import {
 } from "@renderer/hooks";
 import { useDownloadOptionsListener } from "@renderer/hooks/use-download-options-listener";
 import i18n from "i18next";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { WorkWonders } from "workwonders-sdk";
 
 import {
@@ -84,6 +84,20 @@ export function App() {
   useDragTextSelection();
 
   const { t } = useTranslation("app");
+
+  // Pages load on demand. Fetch the common ones once the app is idle so
+  // switching to them is still instant.
+  useEffect(() => {
+    const preload = () => {
+      void import("./pages/library/library");
+      void import("./pages/catalogue/catalogue");
+      void import("./pages/downloads/downloads");
+      void import("./pages/game-details/game-details");
+      void import("./pages/settings/settings");
+    };
+    const id = window.requestIdleCallback(preload, { timeout: 5_000 });
+    return () => window.cancelIdleCallback(id);
+  }, []);
 
   const { clearDownload, setLastPacket, lastPacket } = useDownload();
 
@@ -811,7 +825,9 @@ export function App() {
               id="scrollableDiv"
               className="container__content"
             >
-              <Outlet />
+              <Suspense fallback={null}>
+                <Outlet />
+              </Suspense>
             </section>
           </article>
         </main>

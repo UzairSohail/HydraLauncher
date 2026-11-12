@@ -68,6 +68,7 @@ function renderCard(
     "@shared": { getDisplayedPlayTimeInMilliseconds: () => 0 },
     "./library-category": libraryCategory,
     "@renderer/helpers": {
+      getUpdatableGame: () => null,
       CLASSICS_PS_PLATFORM_LABELS: {},
       isGameReadyToPlay: (game: Record<string, unknown>) => game.isInstalled,
       shouldShowSteamLibraryBadge: (game: Record<string, unknown>) =>

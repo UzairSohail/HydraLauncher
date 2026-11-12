@@ -2101,7 +2101,9 @@
     "scan_games_no_results_title": "Scanning for games finished",
     "scan_games_no_results_description": "No installed games were found",
     "game_update_available": "Update available for {{title}}",
-    "game_update_available_description": "{{version}} is out on {{source}}"
+    "game_update_available_description": "{{version}} is out on {{source}}",
+    "game_updates_available_one": "{{count}} game has an update",
+    "game_updates_available_other": "{{count}} games have updates"
   },
   "system_tray": {
     "open": "Open Nacho",
@@ -2609,7 +2611,23 @@
     "view_mode": "View",
     "view_compact": "Compact",
     "view_grid": "Grid",
-    "view_large": "Large"
+    "view_large": "Large",
+    "update_available": "Update",
+    "updates_available_count_one": "{{count}} game has an update",
+    "updates_available_count_other": "{{count}} games have updates",
+    "show_updates": "Show updates",
+    "show_all_games": "Show all games",
+    "update_all": "Update all",
+    "updating_all": "Starting updates…",
+    "update_all_confirm_title_one": "Update {{count}} game?",
+    "update_all_confirm_title_other": "Update {{count}} games?",
+    "update_all_confirm_description": "Each update downloads with your default settings and is queued one after another. You can keep playing the current versions until each new one is ready, and cancelling an update puts the old version back.",
+    "update_all_started_one": "{{count}} update started",
+    "update_all_started_other": "{{count}} updates started",
+    "update_all_failed_one": "{{count}} update couldn't start",
+    "update_all_failed_other": "{{count}} updates couldn't start",
+    "update_all_failed_description": "Open the game to pick a download option for it.",
+    "cancel": "Cancel"
   },
   "achievement": {
     "achievement_unlocked": "Achievement unlocked",

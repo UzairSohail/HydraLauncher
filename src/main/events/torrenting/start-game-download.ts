@@ -119,7 +119,9 @@ const startGameDownload = async (
       await DownloadOrchestrator.syncAfterDownloadRemoved({ shop, objectId });
     }
     if (setAside) {
-      await GameUpdates.restorePreviousVersion(shop, objectId).catch(() => null);
+      await GameUpdates.restorePreviousVersion(shop, objectId).catch(
+        () => null
+      );
     }
 
     if (isKnownDownloadError(err)) {

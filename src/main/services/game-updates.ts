@@ -69,9 +69,11 @@ const deleteSourceArchives = async (download: Download) => {
   const volumes = await listArchiveVolumes(archive).catch(() => []);
   await Promise.all(
     volumes.map((volume) =>
-      fs.promises.rm(volume, { force: true }).catch((error) =>
-        logger.error("[Game Updates] Could not remove old archive", error)
-      )
+      fs.promises
+        .rm(volume, { force: true })
+        .catch((error) =>
+          logger.error("[Game Updates] Could not remove old archive", error)
+        )
     )
   );
 };
@@ -181,20 +183,19 @@ export class GameUpdates {
         if (sourceIds.length === 0) return;
 
         const games = await gamesSublevel.values().all();
-        let changed = false;
+        const found: { game: Game; update: GameUpdateInfo }[] = [];
 
         for (const game of games) {
           try {
             const update = await this.checkGame(game, sourceIds);
             if (update) {
-              changed = true;
+              found.push({ game, update });
               logger.info("[Game Updates] Newer version found", {
                 shop: game.shop,
                 objectId: game.objectId,
                 installed: game.installedRepack?.title,
                 available: update.title,
               });
-              await this.notify(game, update);
             }
           } catch (error) {
             logger.warn("[Game Updates] Check failed", {
@@ -206,8 +207,9 @@ export class GameUpdates {
           await wait(DELAY_BETWEEN_GAMES_MS);
         }
 
-        if (changed) {
+        if (found.length > 0) {
           WindowManager.sendToAppWindows("on-library-batch-complete");
+          await this.notify(found);
         }
       } catch (error) {
         logger.error("[Game Updates] Check failed", error);
@@ -218,30 +220,72 @@ export class GameUpdates {
     return this.checking;
   }
 
-  private static async notify(game: Game, update: GameUpdateInfo) {
-    const title = t("game_update_available", {
-      ns: "notifications",
-      title: game.title,
-    });
-    const body = t("game_update_available_description", {
-      ns: "notifications",
-      version: update.title,
-      source: update.downloadSourceName,
-    });
-    const url = `/game/${game.shop}/${game.objectId}`;
+  /**
+   * Adds each update to the in-app notifications, but shows a single desktop
+   * notification for the whole check so several updates don't pile up.
+   */
+  private static async notify(found: { game: Game; update: GameUpdateInfo }[]) {
+    for (const { game, update } of found) {
+      await LocalNotificationManager.createNotification(
+        "GAME_UPDATE_AVAILABLE",
+        t("game_update_available", {
+          ns: "notifications",
+          title: game.title,
+        }),
+        t("game_update_available_description", {
+          ns: "notifications",
+          version: update.title,
+          source: update.downloadSourceName,
+        }),
+        {
+          pictureUrl: game.iconUrl,
+          url: `/game/${game.shop}/${game.objectId}`,
+        }
+      );
+    }
 
-    new Notification({ title, body })
-      .on("click", () => {
-        WindowManager.redirect(url);
+    if (found.length === 1) {
+      const [{ game, update }] = found;
+      const url = `/game/${game.shop}/${game.objectId}`;
+      new Notification({
+        title: t("game_update_available", {
+          ns: "notifications",
+          title: game.title,
+        }),
+        body: t("game_update_available_description", {
+          ns: "notifications",
+          version: update.title,
+          source: update.downloadSourceName,
+        }),
       })
-      .show();
+        .on("click", () => WindowManager.redirect(url))
+        .show();
+      return;
+    }
 
-    await LocalNotificationManager.createNotification(
-      "GAME_UPDATE_AVAILABLE",
-      title,
-      body,
-      { pictureUrl: game.iconUrl, url }
-    );
+    new Notification({
+      title: t("game_updates_available", {
+        ns: "notifications",
+        count: found.length,
+      }),
+      body: found.map(({ game }) => game.title).join(", "),
+    })
+      .on("click", () => WindowManager.redirect("/library"))
+      .show();
+  }
+
+  /** The listing for the update a game has waiting, if it's still listed. */
+  public static async getUpdateRepack(
+    shop: Game["shop"],
+    objectId: string
+  ): Promise<GameRepack | null> {
+    const game = await gamesSublevel
+      .get(levelKeys.game(shop, objectId))
+      .catch(() => null);
+    const update = game?.availableUpdate;
+    if (!game || !update) return null;
+    const repacks = await this.fetchRepacks(game, [update.downloadSourceId]);
+    return repacks.find((repack) => repack.id === update.id) ?? null;
   }
 
   /** Stops offering this version. A later one is still offered. */
@@ -372,7 +416,8 @@ export class GameUpdates {
           newFolderPath
         );
         executablePath =
-          candidate && candidate !== current.executablePath &&
+          candidate &&
+          candidate !== current.executablePath &&
           fs.existsSync(candidate)
             ? candidate
             : null;
@@ -406,7 +451,10 @@ export class GameUpdates {
           restoredFolderPath = previous.originalFolderPath;
         })
         .catch((error) =>
-          logger.error("[Game Updates] Could not move the old version back", error)
+          logger.error(
+            "[Game Updates] Could not move the old version back",
+            error
+          )
         );
     }
 

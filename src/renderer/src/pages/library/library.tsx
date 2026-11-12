@@ -13,6 +13,7 @@ import {
   useAppDispatch,
   useAppSelector,
   useGameCollections,
+  useToast,
   useUserDetails,
 } from "@renderer/hooks";
 import {
@@ -33,6 +34,7 @@ import { AuthPage, groupLibraryGames, removeDiacritics } from "@shared";
 import { GameCollection, LibraryGame } from "@types";
 import {
   Button,
+  ConfirmationModal,
   CreateCollectionModal,
   GameContextMenu,
 } from "@renderer/components";
@@ -40,6 +42,7 @@ import { SidebarAddingCustomGameModal } from "@renderer/components/sidebar/sideb
 import { useCollectionContextMenu, useScanGames } from "@renderer/context";
 import {
   getGameCollectionIds,
+  getUpdatableGame,
   isGameInstalled,
   sortLibraryGames,
 } from "@renderer/helpers";
@@ -71,6 +74,7 @@ import {
   ClassicsOnboardingModal,
   hasDismissedClassicsOnboarding,
 } from "@renderer/components/classics-onboarding-modal/classics-onboarding-modal";
+import { useUpdateAllGames } from "./use-update-all-games";
 import "./library.scss";
 
 const FAVORITES_COLLECTION_ID = "__favorites__";
@@ -219,6 +223,10 @@ export default function Library() {
     () => localStorage.getItem(LIBRARY_INSTALLED_ONLY_STORAGE_KEY) === "true"
   );
   const [isImportingClassics, setIsImportingClassics] = useState(false);
+  const [showUpdatesOnly, setShowUpdatesOnly] = useState(false);
+  const [showUpdateAllConfirm, setShowUpdateAllConfirm] = useState(false);
+  const { updateAll, isUpdatingAll } = useUpdateAllGames();
+  const { showSuccessToast, showWarningToast } = useToast();
 
   const effectiveCategory: LibraryCategory = category;
 
@@ -563,6 +571,10 @@ export default function Library() {
       filtered = filtered.filter(isGameInstalled);
     }
 
+    if (showUpdatesOnly) {
+      filtered = filtered.filter((game) => getUpdatableGame(game) !== null);
+    }
+
     const queryLower = removeDiacritics(deferredSearchQuery).toLowerCase();
 
     if (!queryLower.trim()) return filtered;
@@ -595,6 +607,41 @@ export default function Library() {
     hasPlatforms,
     selectedPlatforms,
     showInstalledOnly,
+    showUpdatesOnly,
+  ]);
+
+  const gamesWithUpdates = useMemo(
+    () =>
+      sortedLibrary
+        .map(getUpdatableGame)
+        .filter((game): game is LibraryGame => game !== null),
+    [sortedLibrary]
+  );
+
+  useEffect(() => {
+    if (gamesWithUpdates.length === 0) setShowUpdatesOnly(false);
+  }, [gamesWithUpdates.length]);
+
+  const handleUpdateAll = useCallback(async () => {
+    setShowUpdateAllConfirm(false);
+    const { started, failed } = await updateAll(gamesWithUpdates);
+    if (started > 0) {
+      showSuccessToast(t("update_all_started", { count: started }));
+    }
+    if (failed > 0) {
+      showWarningToast(
+        t("update_all_failed", { count: failed }),
+        t("update_all_failed_description")
+      );
+    }
+    void updateLibrary();
+  }, [
+    updateAll,
+    gamesWithUpdates,
+    showSuccessToast,
+    showWarningToast,
+    t,
+    updateLibrary,
   ]);
 
   useEffect(() => {
@@ -810,6 +857,42 @@ export default function Library() {
           </div>
         </div>
       </div>
+
+      {gamesWithUpdates.length > 0 && (
+        <div className="library__updates-banner">
+          <SyncIcon size={16} className="library__updates-banner-icon" />
+          <span className="library__updates-banner-text">
+            {t("updates_available_count", { count: gamesWithUpdates.length })}
+          </span>
+          <div className="library__updates-banner-actions">
+            <Button
+              theme="outline"
+              onClick={() => setShowUpdatesOnly((value) => !value)}
+            >
+              {showUpdatesOnly ? t("show_all_games") : t("show_updates")}
+            </Button>
+            <Button
+              theme="primary"
+              disabled={isUpdatingAll}
+              onClick={() => setShowUpdateAllConfirm(true)}
+            >
+              {isUpdatingAll ? t("updating_all") : t("update_all")}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <ConfirmationModal
+        visible={showUpdateAllConfirm}
+        title={t("update_all_confirm_title", {
+          count: gamesWithUpdates.length,
+        })}
+        descriptionText={t("update_all_confirm_description")}
+        confirmButtonLabel={t("update_all")}
+        cancelButtonLabel={t("cancel")}
+        onConfirm={() => void handleUpdateAll()}
+        onClose={() => setShowUpdateAllConfirm(false)}
+      />
 
       {!hasGames && !shouldShowClassicsImporting && !isLibraryLoading && (
         <div className="library__no-games">

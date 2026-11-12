@@ -136,6 +136,7 @@ async function renderLibrary(
     "@renderer/hooks": {
       useLibrary: () => ({ library, updateLibrary }),
       useUserDetails: () => ({ userDetails }),
+      useToast: () => ({ showSuccessToast: noop, showWarningToast: noop }),
       useAppDispatch: () => noop,
       useAppSelector: (select: (state: unknown) => unknown) =>
         select({
@@ -172,6 +173,7 @@ async function renderLibrary(
     },
     "@renderer/components": {
       Button: () => null,
+      ConfirmationModal: () => null,
       CreateCollectionModal: () => null,
       GameContextMenu: () => null,
     },
@@ -187,6 +189,7 @@ async function renderLibrary(
       SidebarAddingCustomGameModal: () => null,
     },
     "@renderer/helpers": {
+      getUpdatableGame: () => null,
       getGameCollectionIds: () => [],
       isGameInstalled: () => false,
       sortLibraryGames: (games: TestGame[]) => games,
@@ -197,6 +200,12 @@ async function renderLibrary(
     "./library-game-card": { LibraryGameCard: gameCard },
     "./library-game-card-large": { LibraryGameCardLarge: gameCard },
     "./library-display-menu": { LibraryDisplayMenu: () => null },
+    "./use-update-all-games": {
+      useUpdateAllGames: () => ({
+        updateAll: async () => ({ started: 0, failed: 0 }),
+        isUpdatingAll: false,
+      }),
+    },
     "./category-filter": { CategoryFilter: () => null },
     "./library-filters-menu": { LibraryFiltersMenu: () => null },
     "./library-games-skeleton": { LibraryGamesSkeleton: () => null },

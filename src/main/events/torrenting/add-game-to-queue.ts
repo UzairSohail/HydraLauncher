@@ -88,7 +88,9 @@ const addGameToQueue = async (
     await DownloadManager.cancelDownload(gameKey).catch(() => null);
   } catch (err: unknown) {
     if (setAside) {
-      await GameUpdates.restorePreviousVersion(shop, objectId).catch(() => null);
+      await GameUpdates.restorePreviousVersion(shop, objectId).catch(
+        () => null
+      );
     }
     if (isKnownDownloadError(err)) {
       logger.warn(
@@ -123,7 +125,9 @@ const addGameToQueue = async (
       await DownloadOrchestrator.syncAfterDownloadRemoved({ shop, objectId });
     }
     if (setAside) {
-      await GameUpdates.restorePreviousVersion(shop, objectId).catch(() => null);
+      await GameUpdates.restorePreviousVersion(shop, objectId).catch(
+        () => null
+      );
     }
 
     logger.error("Failed to add game to queue", err);

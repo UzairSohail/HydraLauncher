@@ -17,6 +17,7 @@ import {
 } from "@renderer/helpers/catalogue-images";
 import {
   CLASSICS_PS_PLATFORM_LABELS,
+  getUpdatableGame,
   isGameReadyToPlay,
   resolveClassicsBadge,
 } from "@renderer/helpers";
@@ -29,6 +30,7 @@ import {
   DatabaseIcon,
   FileZipIcon,
   CheckCircleFillIcon,
+  SyncIcon,
 } from "@primer/octicons-react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -57,19 +59,30 @@ const normalizePathForCss = (url: string | null | undefined): string => {
 
 interface InstalledBadgeProps {
   emulatorIcon: string | null | undefined;
+  updateTitle?: string | null;
 }
 
-function InstalledBadge({ emulatorIcon }: Readonly<InstalledBadgeProps>) {
+function InstalledBadge({
+  emulatorIcon,
+  updateTitle,
+}: Readonly<InstalledBadgeProps>) {
   const { t } = useTranslation("library");
 
   return (
     <div
       className={cn("library-game-card-large__installed-badge", {
-        "library-game-card-large__installed-badge--classics": emulatorIcon,
+        "library-game-card-large__installed-badge--classics":
+          emulatorIcon && !updateTitle,
+        "library-game-card-large__installed-badge--update": updateTitle,
       })}
-      title={t("installed_tooltip")}
+      title={updateTitle ?? t("installed_tooltip")}
     >
-      {emulatorIcon ? (
+      {updateTitle ? (
+        <SyncIcon
+          size={12}
+          className="library-game-card-large__installed-icon"
+        />
+      ) : emulatorIcon ? (
         <img
           src={emulatorIcon}
           alt=""
@@ -82,7 +95,7 @@ function InstalledBadge({ emulatorIcon }: Readonly<InstalledBadgeProps>) {
         />
       )}
       <span className="library-game-card-large__installed-text">
-        {t("installed")}
+        {updateTitle ? t("update_available") : t("installed")}
       </span>
     </div>
   );
@@ -397,9 +410,13 @@ export const LibraryGameCardLarge = memo(function LibraryGameCardLarge({
       }
     );
 
+  const updateTitle = getUpdatableGame(game)?.availableUpdate?.title ?? null;
   const installedBadge =
-    !hideReadySizeBadges && isInstalled ? (
-      <InstalledBadge emulatorIcon={classicsEmulatorIcon} />
+    (!hideReadySizeBadges && isInstalled) || updateTitle ? (
+      <InstalledBadge
+        emulatorIcon={classicsEmulatorIcon}
+        updateTitle={updateTitle}
+      />
     ) : null;
 
   return (
