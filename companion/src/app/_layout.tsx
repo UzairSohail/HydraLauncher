@@ -1,9 +1,11 @@
 import { DarkTheme, Stack, ThemeProvider } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { useEffect } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 
 import { Button, colors, ErrorBanner, styles } from "../components/ui";
 import { LinkProvider, useLink } from "../lib/link-context";
+import { offerUpdate } from "../lib/update-check";
 
 const theme = {
   ...DarkTheme,
@@ -61,6 +63,10 @@ function SignInGate() {
 }
 
 export default function RootLayout() {
+  useEffect(() => {
+    void offerUpdate();
+  }, []);
+
   return (
     <ThemeProvider value={theme}>
       <LinkProvider>
