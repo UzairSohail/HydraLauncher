@@ -19,6 +19,7 @@ import {
 } from "@renderer/helpers/epic-managed-error";
 import { FileArchive, XCircle } from "lucide-react";
 import {
+  useAppSelector,
   useDownload,
   useGameExecutablePicker,
   useFinishedDownloadStep,
@@ -129,6 +130,11 @@ export function HeroPanelActions() {
   } | null>(null);
 
   const { t } = useTranslation("game_details");
+  // The game files are being written while a PS4 PKG is extracted or applied.
+  const isPs4PkgJobRunning = useAppSelector((state) => {
+    const job = state.ps4PkgJob.job;
+    return job !== null && job.shop === shop && job.objectId === objectId;
+  });
   const launchGeneration = useRef(0);
   const invalidateLaunch = useCallback(() => {
     launchGeneration.current++;
@@ -686,7 +692,7 @@ export function HeroPanelActions() {
         <Button
           onClick={openGame}
           theme="outline"
-          disabled={deleting || isGameRunning}
+          disabled={deleting || isGameRunning || isPs4PkgJobRunning}
           className="hero-panel-actions__action"
         >
           <PlayIcon />

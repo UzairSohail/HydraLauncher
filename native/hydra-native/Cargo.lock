@@ -1276,6 +1276,7 @@ dependencies = [
 name = "hydra-native"
 version = "0.1.0"
 dependencies = [
+ "aes",
  "anyhow",
  "blake3",
  "cloud-save-manager",

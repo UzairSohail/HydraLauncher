@@ -7,6 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
+aes = "=0.9.3"
 anyhow = "1.0"
 # The personal cloud save sync. Private repo: building needs git access to it.
 cloud-save-manager = { git = "https://github.com/UzairSohail/cloud-save-manager", rev = "7874683441b72070b45ad927d5d7124c4b74bad5", default-features = false }
