@@ -9,3 +9,9 @@ registerEvent(
   (_event: Electron.IpcMainInvokeEvent, shop: GameShop, objectId: string) =>
     GameUpdates.skipUpdate(shop, objectId)
 );
+
+registerEvent(
+  "getGameUpdateRepack",
+  (_event: Electron.IpcMainInvokeEvent, shop: GameShop, objectId: string) =>
+    GameUpdates.getUpdateRepack(shop, objectId)
+);

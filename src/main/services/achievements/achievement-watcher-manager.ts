@@ -29,6 +29,10 @@ import { AchievementMemoryStore } from "./achievement-memory-store";
 import { UnlockedAchievementsCache } from "./unlocked-achievements-cache";
 import { CombinedAchievementsRequests } from "./combined-achievements-requests";
 import { achievementNotificationPresenter } from "../achievement-notification-presenter-electron";
+import { gamesPlaytime } from "../game-running-state";
+
+const IDLE_SCAN_INTERVAL_MS = 60_000;
+const RECENTLY_PLAYING_WINDOW_MS = 30_000;
 
 const fileStats: Map<string, number> = new Map();
 const fltFiles: Map<string, Set<string>> = new Map();
@@ -450,9 +454,29 @@ export class AchievementWatcherManager {
     );
   }
 
+  private static lastScanAt = 0;
+  private static lastGameRunningAt = 0;
+
+  /**
+   * Scanning every game's achievement files is costly, and they only change
+   * while a game is running. So scan on every tick while a game runs (and for
+   * a short while after it closes), and only now and then otherwise.
+   */
+  private static shouldScanNow(now: number) {
+    if (gamesPlaytime.size > 0) this.lastGameRunningAt = now;
+    const recentlyPlaying =
+      now - this.lastGameRunningAt < RECENTLY_PLAYING_WINDOW_MS;
+    if (recentlyPlaying || now - this.lastScanAt >= IDLE_SCAN_INTERVAL_MS) {
+      this.lastScanAt = now;
+      return true;
+    }
+    return false;
+  }
+
   public static watchAchievements() {
     void achievementSyncWorker.trigger();
     if (!this.hasFinishedPreSearch || this.batchDepth > 0) return;
+    if (!this.shouldScanNow(Date.now())) return;
 
     if (process.platform === "win32") {
       return watchAchievementsWindows();

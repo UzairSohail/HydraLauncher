@@ -1281,6 +1281,8 @@ contextBridge.exposeInMainWorld("electron", {
   checkGameUpdates: () => ipcRenderer.invoke("checkGameUpdates"),
   skipGameUpdate: (shop: GameShop, objectId: string) =>
     ipcRenderer.invoke("skipGameUpdate", shop, objectId),
+  getGameUpdateRepack: (shop: GameShop, objectId: string) =>
+    ipcRenderer.invoke("getGameUpdateRepack", shop, objectId),
   toggleGamePin: (shop: GameShop, objectId: string, pinned: boolean) =>
     ipcRenderer.invoke("toggleGamePin", shop, objectId, pinned),
   updateLaunchOptions: (

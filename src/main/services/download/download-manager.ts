@@ -454,6 +454,9 @@ export class DownloadManager {
     this.maxDownloadSpeedBytesPerSecond = normalizedLimit;
     this.jsDownloader?.setMaxDownloadSpeedBytesPerSecond(normalizedLimit);
 
+    // Applied when the torrent engine starts, if it isn't running yet.
+    if (!TorrentService.isStarted) return;
+
     await TorrentService.call("action", {
       action: "set_download_limit",
       max_download_speed_bytes_per_second: normalizedLimit,
@@ -495,6 +498,8 @@ export class DownloadManager {
   public static async applyNetworkInterface(
     value?: string | null
   ): Promise<void> {
+    if (!TorrentService.isStarted) return;
+
     const networkInterface =
       value ?? (await this.getPersistedNetworkInterface());
 
@@ -513,9 +518,19 @@ export class DownloadManager {
     download?: Download,
     downloadsToSeed?: Download[]
   ) {
-    await TorrentService.initialize();
+    TorrentService.onStarted = async () => {
+      await this.applyNetworkInterface();
+      await this.applyDownloadSpeedLimit();
+    };
 
-    await this.applyNetworkInterface();
+    // Plain torrenting is debrid-only, so the torrent engine usually has
+    // nothing to do. It starts on demand instead of on every launch.
+    if (
+      downloadsToSeed?.length ||
+      download?.downloader === Downloader.Torrent
+    ) {
+      await TorrentService.initialize();
+    }
 
     if (downloadsToSeed?.length) {
       for (const seedDownload of downloadsToSeed) {
@@ -1092,6 +1107,13 @@ export class DownloadManager {
       }
     } else {
       const gameFilesManager = new GameFilesManager(game.shop, game.objectId);
+      await import("../game-updates")
+        .then(({ GameUpdates }) =>
+          GameUpdates.finishUpdate(game.shop, game.objectId)
+        )
+        .catch((error) =>
+          logger.error("[DownloadManager] Failed to finish game update", error)
+        );
       gameFilesManager.searchAndBindExecutable();
       void gameFilesManager.autoLinkClassicsDiscs();
     }
@@ -1451,6 +1473,8 @@ export class DownloadManager {
   }
 
   public static async getSeedStatus() {
+    if (!TorrentService.isStarted) return;
+
     let seedStatus: LibtorrentPayload[] = [];
 
     try {
@@ -1467,8 +1491,6 @@ export class DownloadManager {
       WindowManager.sendToAppWindows("on-seeding-status", []);
       return;
     }
-
-    logger.log(seedStatus);
 
     for (const status of seedStatus) {
       const download = await downloadsSublevel.get(status.gameId);

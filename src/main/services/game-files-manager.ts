@@ -465,6 +465,13 @@ export class GameFilesManager {
 
     if (!extractedDownload) return;
 
+    await import("./game-updates")
+      .then(({ GameUpdates }) =>
+        GameUpdates.finishUpdate(this.shop, this.objectId)
+      )
+      .catch((error) =>
+        logger.error("[GameFilesManager] Failed to finish game update", error)
+      );
     await this.searchAndBindExecutable();
     const hasInstaller =
       (await findDownloadInstaller(extractedDownload)) !== null;

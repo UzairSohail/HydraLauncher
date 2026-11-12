@@ -491,6 +491,13 @@ export const canDownloadOnSteam = (
     | undefined
 ): boolean => isSteamImportedGame(game) && !game?.executablePath;
 
+/** The library entry (or the grouped member) that has an update waiting. */
+export const getUpdatableGame = (game: LibraryGame): LibraryGame | null => {
+  if (game.availableUpdate) return game;
+  const members = (game as { members?: LibraryGame[] }).members;
+  return members?.find((member) => member.availableUpdate) ?? null;
+};
+
 export const isGameReadyToPlay = (game: LibraryGame): boolean =>
   game.shop === "launchbox"
     ? Boolean(game.selectedDiscPath)

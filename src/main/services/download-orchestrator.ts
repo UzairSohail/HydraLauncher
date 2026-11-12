@@ -1388,6 +1388,14 @@ export class DownloadOrchestrator {
       debridQueuePosition: undefined,
       debridPreparationDeadline: undefined,
     });
+    // A cancelled update leaves the version it was replacing in place.
+    await import("./game-updates")
+      .then(({ GameUpdates }) =>
+        GameUpdates.restorePreviousVersion(shop, objectId)
+      )
+      .catch((error) =>
+        logger.error("Failed to restore the version an update replaced", error)
+      );
 
     const downloads = await this.getAllDownloads();
     await removeDownloadFromLayoutState(

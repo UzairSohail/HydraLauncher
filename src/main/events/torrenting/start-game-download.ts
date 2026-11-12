@@ -46,6 +46,7 @@ const startGameDownload = async (
   );
 
   let didWriteDownload = false;
+  let setAside = false;
 
   try {
     if (isBlockedTorrentDownload(downloader, uri)) {
@@ -84,7 +85,7 @@ const startGameDownload = async (
     if (replaceInstalledVersion) {
       // Only after the new download checked out, so a bad link or a missing
       // debrid key never leaves the game uninstalled.
-      await GameUpdates.removeInstalledVersion(shop, objectId);
+      setAside = await GameUpdates.setAsideInstalledVersion(shop, objectId);
     }
     await prepareGameEntry({ gameKey, title, objectId, shop });
     if (repack) {
@@ -116,6 +117,11 @@ const startGameDownload = async (
       await DownloadManager.cancelDownload(gameKey).catch(() => null);
       await downloadsSublevel.del(gameKey).catch(() => null);
       await DownloadOrchestrator.syncAfterDownloadRemoved({ shop, objectId });
+    }
+    if (setAside) {
+      await GameUpdates.restorePreviousVersion(shop, objectId).catch(
+        () => null
+      );
     }
 
     if (isKnownDownloadError(err)) {

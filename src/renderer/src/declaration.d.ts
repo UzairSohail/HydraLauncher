@@ -1,5 +1,6 @@
 import type { AuthPage, Downloader } from "@shared";
 import type {
+  GameRepack,
   LocalScreenshot,
   LocalScreenshotDraft,
   LocalScreenshotUploadOptions,
@@ -575,6 +576,10 @@ declare global {
     ) => Promise<void>;
     checkGameUpdates: () => Promise<void>;
     skipGameUpdate: (shop: GameShop, objectId: string) => Promise<void>;
+    getGameUpdateRepack: (
+      shop: GameShop,
+      objectId: string
+    ) => Promise<GameRepack | null>;
     toggleGamePin: (
       shop: GameShop,
       objectId: string,

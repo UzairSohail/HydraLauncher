@@ -56,6 +56,7 @@ it("refreshes grouped progress on member changes and preserves known offline tot
     },
     "@shared": { getDisplayedPlayTimeInMilliseconds: () => 0 },
     "@renderer/helpers": {
+      getUpdatableGame: () => null,
       CLASSICS_PS_PLATFORM_LABELS: {},
       isGameReadyToPlay: () => false,
       resolveClassicsBadge: () => ({}),

@@ -243,6 +243,11 @@
     flex-shrink: 0;
   }
 
+  &__installed-badge--update {
+    color: globals.$brand-teal;
+    border-color: rgba(globals.$brand-teal, 0.4);
+  }
+
   &__installed-badge--classics {
     border: 1px solid transparent;
     border-radius: 6px;

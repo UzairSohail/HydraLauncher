@@ -156,6 +156,9 @@ export const loadState = async () => {
         logger.error("Failed to migrate download sources", error)
       );
       await DownloadSourcesChecker.checkForChanges();
+      await GameUpdates.finishCompletedUpdates().catch((error) =>
+        logger.error("Failed to finish completed game updates", error)
+      );
       GameUpdates.start();
     })();
 

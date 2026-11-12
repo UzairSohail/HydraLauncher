@@ -16,6 +16,7 @@ import {
 } from "@renderer/helpers/catalogue-images";
 import {
   CLASSICS_PS_PLATFORM_LABELS,
+  getUpdatableGame,
   isGameReadyToPlay,
   resolveClassicsBadge,
 } from "@renderer/helpers";
@@ -28,6 +29,7 @@ import {
   AlertFillIcon,
   ImageIcon,
   CheckCircleFillIcon,
+  SyncIcon,
 } from "@primer/octicons-react";
 import {
   EMULATOR_ICONS,
@@ -156,7 +158,9 @@ export const LibraryGameCard = memo(function LibraryGameCard({
 
   const showPlatformBadge =
     !hideClassicsBadges && Boolean(classicsPlatformLabel);
-  const showReadyBadge = !hideReadySizeBadges && isInstalled;
+  const availableUpdate = getUpdatableGame(game)?.availableUpdate ?? null;
+  const showReadyBadge =
+    (!hideReadySizeBadges && isInstalled) || availableUpdate !== null;
 
   const handleImageError = () => {
     if (catalogueImage.markFailed()) return;
@@ -322,11 +326,18 @@ export const LibraryGameCard = memo(function LibraryGameCard({
                 <div
                   className={cn("library-game-card__installed-badge", {
                     "library-game-card__installed-badge--classics":
-                      classicsEmulatorIcon,
+                      classicsEmulatorIcon && !availableUpdate,
+                    "library-game-card__installed-badge--update":
+                      availableUpdate,
                   })}
-                  title={t("installed_tooltip")}
+                  title={availableUpdate?.title ?? t("installed_tooltip")}
                 >
-                  {classicsEmulatorIcon ? (
+                  {availableUpdate ? (
+                    <SyncIcon
+                      size={11}
+                      className="library-game-card__installed-icon"
+                    />
+                  ) : classicsEmulatorIcon ? (
                     <img
                       src={classicsEmulatorIcon}
                       alt=""
@@ -339,7 +350,7 @@ export const LibraryGameCard = memo(function LibraryGameCard({
                     />
                   )}
                   <span className="library-game-card__installed-text">
-                    {t("installed")}
+                    {availableUpdate ? t("update_available") : t("installed")}
                   </span>
                 </div>
               )}

@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { Notification } from "electron";
 import { t } from "i18next";
 
@@ -17,7 +19,10 @@ import {
   type InstalledRepackInfo,
 } from "@shared";
 import type { Download, Game, GameRepack } from "@types";
-import { deleteGameFiles } from "@main/events/library/delete-game-folder";
+import {
+  findSourceArchiveFile,
+  listArchiveVolumes,
+} from "@main/helpers/find-game-installer";
 
 import { HydraApi } from "./hydra-api";
 import { logger } from "./logger";
@@ -30,6 +35,48 @@ import { LocalNotificationManager } from "./notifications/local-notifications";
 const FIRST_CHECK_DELAY_MS = 2 * 60 * 1000;
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const DELAY_BETWEEN_GAMES_MS = 500;
+
+const PREVIOUS_SUFFIX = " (previous version)";
+
+const isInside = (target: string, folder: string) => {
+  const relative = path.relative(folder, target);
+  return !relative.startsWith("..") && !path.isAbsolute(relative);
+};
+
+/** Re-points a path inside `from` to the same place inside `to`. */
+const moveInto = (
+  target: string | null | undefined,
+  from: string | null,
+  to: string | null
+) => {
+  if (!target) return null;
+  if (!from || !to || !isInside(target, from)) return target;
+  return path.join(to, path.relative(from, target));
+};
+
+/** The path itself, or the path with a number added when it's taken. */
+const freePath = async (target: string) => {
+  let candidate = target;
+  for (let n = 2; fs.existsSync(candidate); n++) {
+    candidate = `${target} ${n}`;
+  }
+  return candidate;
+};
+
+const deleteSourceArchives = async (download: Download) => {
+  const archive = await findSourceArchiveFile(download).catch(() => null);
+  if (!archive) return;
+  const volumes = await listArchiveVolumes(archive).catch(() => []);
+  await Promise.all(
+    volumes.map((volume) =>
+      fs.promises
+        .rm(volume, { force: true })
+        .catch((error) =>
+          logger.error("[Game Updates] Could not remove old archive", error)
+        )
+    )
+  );
+};
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -136,20 +183,19 @@ export class GameUpdates {
         if (sourceIds.length === 0) return;
 
         const games = await gamesSublevel.values().all();
-        let changed = false;
+        const found: { game: Game; update: GameUpdateInfo }[] = [];
 
         for (const game of games) {
           try {
             const update = await this.checkGame(game, sourceIds);
             if (update) {
-              changed = true;
+              found.push({ game, update });
               logger.info("[Game Updates] Newer version found", {
                 shop: game.shop,
                 objectId: game.objectId,
                 installed: game.installedRepack?.title,
                 available: update.title,
               });
-              await this.notify(game, update);
             }
           } catch (error) {
             logger.warn("[Game Updates] Check failed", {
@@ -161,8 +207,9 @@ export class GameUpdates {
           await wait(DELAY_BETWEEN_GAMES_MS);
         }
 
-        if (changed) {
+        if (found.length > 0) {
           WindowManager.sendToAppWindows("on-library-batch-complete");
+          await this.notify(found);
         }
       } catch (error) {
         logger.error("[Game Updates] Check failed", error);
@@ -173,30 +220,72 @@ export class GameUpdates {
     return this.checking;
   }
 
-  private static async notify(game: Game, update: GameUpdateInfo) {
-    const title = t("game_update_available", {
-      ns: "notifications",
-      title: game.title,
-    });
-    const body = t("game_update_available_description", {
-      ns: "notifications",
-      version: update.title,
-      source: update.downloadSourceName,
-    });
-    const url = `/game/${game.shop}/${game.objectId}`;
+  /**
+   * Adds each update to the in-app notifications, but shows a single desktop
+   * notification for the whole check so several updates don't pile up.
+   */
+  private static async notify(found: { game: Game; update: GameUpdateInfo }[]) {
+    for (const { game, update } of found) {
+      await LocalNotificationManager.createNotification(
+        "GAME_UPDATE_AVAILABLE",
+        t("game_update_available", {
+          ns: "notifications",
+          title: game.title,
+        }),
+        t("game_update_available_description", {
+          ns: "notifications",
+          version: update.title,
+          source: update.downloadSourceName,
+        }),
+        {
+          pictureUrl: game.iconUrl,
+          url: `/game/${game.shop}/${game.objectId}`,
+        }
+      );
+    }
 
-    new Notification({ title, body })
-      .on("click", () => {
-        WindowManager.redirect(url);
+    if (found.length === 1) {
+      const [{ game, update }] = found;
+      const url = `/game/${game.shop}/${game.objectId}`;
+      new Notification({
+        title: t("game_update_available", {
+          ns: "notifications",
+          title: game.title,
+        }),
+        body: t("game_update_available_description", {
+          ns: "notifications",
+          version: update.title,
+          source: update.downloadSourceName,
+        }),
       })
-      .show();
+        .on("click", () => WindowManager.redirect(url))
+        .show();
+      return;
+    }
 
-    await LocalNotificationManager.createNotification(
-      "GAME_UPDATE_AVAILABLE",
-      title,
-      body,
-      { pictureUrl: game.iconUrl, url }
-    );
+    new Notification({
+      title: t("game_updates_available", {
+        ns: "notifications",
+        count: found.length,
+      }),
+      body: found.map(({ game }) => game.title).join(", "),
+    })
+      .on("click", () => WindowManager.redirect("/library"))
+      .show();
+  }
+
+  /** The listing for the update a game has waiting, if it's still listed. */
+  public static async getUpdateRepack(
+    shop: Game["shop"],
+    objectId: string
+  ): Promise<GameRepack | null> {
+    const game = await gamesSublevel
+      .get(levelKeys.game(shop, objectId))
+      .catch(() => null);
+    const update = game?.availableUpdate;
+    if (!game || !update) return null;
+    const repacks = await this.fetchRepacks(game, [update.downloadSourceId]);
+    return repacks.find((repack) => repack.id === update.id) ?? null;
   }
 
   /** Stops offering this version. A later one is still offered. */
@@ -208,17 +297,19 @@ export class GameUpdates {
   }
 
   /**
-   * Backs up the game's saves to Google Drive, then removes the installed
-   * version's files so the new one can be downloaded in its place. Saves
-   * that live outside the game folder are never touched.
+   * Backs up the game's saves to Google Drive, then moves the installed
+   * version's folder aside so the new one can be downloaded without touching
+   * it. The old version stays playable until the new one has finished, and
+   * comes back if the update is cancelled. Saves that live outside the game
+   * folder are never touched.
    */
-  public static async removeInstalledVersion(
+  public static async setAsideInstalledVersion(
     shop: Game["shop"],
     objectId: string
-  ) {
+  ): Promise<boolean> {
     const gameKey = levelKeys.game(shop, objectId);
     const game = await gamesSublevel.get(gameKey);
-    if (!game) return;
+    if (!game) return false;
 
     if (isGameRunning(objectId, shop)) {
       throw new Error(DownloadError.UpdateGameRunning);
@@ -238,9 +329,183 @@ export class GameUpdates {
       }
     }
 
+    // An earlier update that never finished already holds the version that
+    // is actually playable, so keep that one.
+    if (game.previousInstall) return false;
+
     const download = await downloadsSublevel.get(gameKey).catch(() => null);
-    if (download) {
-      await deleteGameFiles(shop, objectId, { deleteSourceArchive: true });
+    const originalFolderPath =
+      download?.folderName && download.downloadPath
+        ? path.join(download.downloadPath, download.folderName)
+        : null;
+
+    let folderPath: string | null = null;
+    if (originalFolderPath && fs.existsSync(originalFolderPath)) {
+      folderPath = await freePath(`${originalFolderPath}${PREVIOUS_SUFFIX}`);
+      await fs.promises.rename(originalFolderPath, folderPath);
+      // The old archive isn't needed to play, and a new archive with the
+      // same name would otherwise look already downloaded.
+      await deleteSourceArchives(download!);
+    }
+
+    await updateGameRecord(gameKey, (current) => ({
+      previousInstall: {
+        folderPath,
+        originalFolderPath,
+        download: download ?? null,
+        installedRepack: current.installedRepack ?? null,
+        executablePath: current.executablePath ?? null,
+      },
+      executablePath: moveInto(
+        current.executablePath,
+        originalFolderPath,
+        folderPath
+      ),
+    }));
+    logger.info("[Game Updates] Kept the installed version aside", {
+      shop,
+      objectId,
+      folderPath,
+    });
+    return true;
+  }
+
+  /**
+   * Once the new version is in place, removes the old one and points the
+   * game at the new files. Waits while the old version is being played.
+   */
+  public static async finishUpdate(shop: Game["shop"], objectId: string) {
+    const gameKey = levelKeys.game(shop, objectId);
+    const game = await gamesSublevel.get(gameKey).catch(() => null);
+    const previous = game?.previousInstall;
+    if (!game || !previous) return;
+    if (isGameRunning(objectId, shop)) return;
+
+    const download = await downloadsSublevel.get(gameKey).catch(() => null);
+    const newFolderPath =
+      download?.folderName && download.downloadPath
+        ? path.join(download.downloadPath, download.folderName)
+        : null;
+
+    if (previous.folderPath && previous.folderPath !== newFolderPath) {
+      await fs.promises
+        .rm(previous.folderPath, {
+          recursive: true,
+          force: true,
+          maxRetries: 5,
+          retryDelay: 200,
+        })
+        .catch((error) =>
+          logger.error("[Game Updates] Could not remove the old version", error)
+        );
+    }
+
+    await updateGameRecord(gameKey, (current) => {
+      const executableWasMoved =
+        previous.folderPath !== null &&
+        current.executablePath !== null &&
+        current.executablePath !== undefined &&
+        isInside(current.executablePath, previous.folderPath);
+
+      let executablePath = current.executablePath ?? null;
+      if (executableWasMoved) {
+        // Same file name in the new version's folder, when it has one.
+        const candidate = moveInto(
+          current.executablePath,
+          previous.folderPath,
+          newFolderPath
+        );
+        executablePath =
+          candidate &&
+          candidate !== current.executablePath &&
+          fs.existsSync(candidate)
+            ? candidate
+            : null;
+      }
+
+      return { previousInstall: null, executablePath };
+    });
+    logger.info("[Game Updates] Update finished", { shop, objectId });
+  }
+
+  /** Puts the old version back when its update is cancelled. */
+  public static async restorePreviousVersion(
+    shop: Game["shop"],
+    objectId: string
+  ) {
+    const gameKey = levelKeys.game(shop, objectId);
+    const game = await gamesSublevel.get(gameKey).catch(() => null);
+    const previous = game?.previousInstall;
+    if (!game || !previous) return;
+
+    let restoredFolderPath = previous.folderPath;
+    if (
+      previous.folderPath &&
+      previous.originalFolderPath &&
+      fs.existsSync(previous.folderPath) &&
+      !fs.existsSync(previous.originalFolderPath)
+    ) {
+      await fs.promises
+        .rename(previous.folderPath, previous.originalFolderPath)
+        .then(() => {
+          restoredFolderPath = previous.originalFolderPath;
+        })
+        .catch((error) =>
+          logger.error(
+            "[Game Updates] Could not move the old version back",
+            error
+          )
+        );
+    }
+
+    if (previous.download) {
+      await downloadsSublevel.put(gameKey, {
+        ...previous.download,
+        folderName:
+          restoredFolderPath && previous.download.downloadPath
+            ? path.relative(previous.download.downloadPath, restoredFolderPath)
+            : previous.download.folderName,
+        queued: false,
+        pinnedToHero: false,
+      });
+    }
+
+    await updateGameRecord(gameKey, {
+      previousInstall: null,
+      installedRepack: previous.installedRepack,
+      executablePath: moveInto(
+        previous.executablePath,
+        previous.originalFolderPath,
+        restoredFolderPath
+      ),
+    });
+    WindowManager.sendDownloadsUpdated();
+    logger.info("[Game Updates] Update cancelled, old version restored", {
+      shop,
+      objectId,
+    });
+  }
+
+  /** Finishes updates that completed while their old version was running. */
+  public static async finishCompletedUpdates() {
+    const games = await gamesSublevel.values().all();
+    for (const game of games) {
+      if (!game.previousInstall) continue;
+      const download = await downloadsSublevel
+        .get(levelKeys.game(game.shop, game.objectId))
+        .catch(() => null);
+      if (download?.status === "complete" && !download.extracting) {
+        try {
+          await this.finishUpdate(game.shop, game.objectId);
+          const { GameFilesManager } = await import("./game-files-manager");
+          await new GameFilesManager(
+            game.shop,
+            game.objectId
+          ).searchAndBindExecutable();
+        } catch (error) {
+          logger.error("[Game Updates] Could not finish update", error);
+        }
+      }
     }
   }
 
