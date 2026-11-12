@@ -1,0 +1,84 @@
+import {
+  GoogleSignin,
+  isErrorWithCode,
+  statusCodes,
+} from "@react-native-google-signin/google-signin";
+
+import { DRIVE_SCOPE, GOOGLE_WEB_CLIENT_ID } from "./config";
+
+export interface GoogleAccount {
+  email: string;
+  name: string | null;
+}
+
+let configured = false;
+
+const configure = () => {
+  if (configured) return;
+  GoogleSignin.configure({
+    scopes: [DRIVE_SCOPE],
+    webClientId: GOOGLE_WEB_CLIENT_ID,
+  });
+  configured = true;
+};
+
+const toAccount = (user: { email: string; name: string | null }) => ({
+  email: user.email,
+  name: user.name,
+});
+
+/** The account signed in last time, without showing anything. */
+export const restoreSignIn = async (): Promise<GoogleAccount | null> => {
+  configure();
+  try {
+    const result = await GoogleSignin.signInSilently();
+    return result.type === "success" ? toAccount(result.data.user) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const signIn = async (): Promise<GoogleAccount | null> => {
+  configure();
+  await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  const result = await GoogleSignin.signIn();
+  if (result.type !== "success") return null;
+  if (!result.data.scopes.includes(DRIVE_SCOPE)) {
+    const added = await GoogleSignin.addScopes({ scopes: [DRIVE_SCOPE] });
+    if (added?.type !== "success") {
+      throw new Error("Nacho needs access to its Google Drive files to work.");
+    }
+  }
+  return toAccount(result.data.user);
+};
+
+export const signOut = async () => {
+  configure();
+  await GoogleSignin.signOut();
+};
+
+export const getAccessToken = async () => {
+  configure();
+  const { accessToken } = await GoogleSignin.getTokens();
+  return accessToken;
+};
+
+/** Drops a token Google refused, so the next call gets a fresh one. */
+export const forgetAccessToken = (token: string) =>
+  GoogleSignin.clearCachedAccessToken(token).catch(() => null);
+
+export const describeSignInError = (error: unknown) => {
+  if (isErrorWithCode(error)) {
+    if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+      return "Google Play services isn't available on this phone.";
+    }
+    if (error.code === statusCodes.IN_PROGRESS) {
+      return "Sign-in is already in progress.";
+    }
+    // DEVELOPER_ERROR: the app's signing key or package isn't registered.
+    if (error.code === "10" || error.code === "DEVELOPER_ERROR") {
+      return "Google doesn't recognise this app yet. Add the Android sign-in client from the setup guide to the launcher's Google Cloud project.";
+    }
+  }
+  return error instanceof Error ? error.message : String(error);
+};

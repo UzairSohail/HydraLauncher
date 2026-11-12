@@ -1,0 +1,111 @@
+name: Phone app
+
+# Builds the Android phone app (companion/) and publishes the APK as the
+# "phone-app" release, replacing the previous one. It's a pre-release so the
+# launcher's auto-update never mistakes it for a desktop version, and the
+# desktop Release workflow leaves it alone.
+#
+# Runs only when started by hand (Actions > Phone app > Run workflow).
+#
+# Needs these repository secrets (see docs/companion-app.md):
+#   ANDROID_KEYSTORE_BASE64    the signing keystore, base64 encoded
+#   ANDROID_KEYSTORE_PASSWORD  its password (store and key use the same one)
+# And optionally this repository variable:
+#   GOOGLE_WEB_CLIENT_ID       a Web OAuth client in the launcher's Google Cloud project
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: phone-app
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      TAG: phone-app
+
+    defaults:
+      run:
+        working-directory: companion
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+
+      - name: Check signing secrets
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE" ] || [ -z "$PASSWORD" ]; then
+            echo "::error::Set the ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD secrets first (docs/companion-app.md)."
+            exit 1
+          fi
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.21.0
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      # Every build gets a higher versionCode, so Android installs it as an update.
+      - name: Set version
+        run: |
+          jq --argjson code "${{ github.run_number }}" \
+            '.expo.android.versionCode = $code | .expo.version = "1.0.\($code)"' \
+            app.json > app.json.tmp
+          mv app.json.tmp app.json
+
+      - name: Generate the Android project
+        run: npx expo prebuild --platform android --no-install
+        env:
+          EXPO_OFFLINE: 1
+
+      - name: Build the APK
+        working-directory: companion/android
+        env:
+          EXPO_PUBLIC_API_URL: ${{ vars.MAIN_VITE_API_URL || 'https://hydra-api-us-east-1.losbroxas.org' }}
+          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ vars.GOOGLE_WEB_CLIENT_ID }}
+          NODE_ENV: production
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a,x86_64
+
+      # Signed with the app's own key, whose fingerprint is registered with
+      # Google, so Google sign-in recognises the app.
+      - name: Sign the APK
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/nacho.jks"
+          build_tools=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)
+          "$build_tools/apksigner" sign \
+            --ks "$RUNNER_TEMP/nacho.jks" --ks-key-alias nacho \
+            --ks-pass env:PASSWORD --key-pass env:PASSWORD \
+            --out "$RUNNER_TEMP/Nacho.apk" \
+            android/app/build/outputs/apk/release/app-release.apk
+          "$build_tools/apksigner" verify --print-certs "$RUNNER_TEMP/Nacho.apk" | grep -i "SHA-1"
+          rm "$RUNNER_TEMP/nacho.jks"
+
+      - name: Publish the release
+        run: |
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" "$RUNNER_TEMP/Nacho.apk" \
+            --target "${{ github.sha }}" \
+            --title "Nacho phone app (build ${{ github.run_number }})" \
+            --notes "Android phone app for Nacho Launcher. Install Nacho.apk on your phone (allow installs from your browser when asked). Sign in with the same Google account as the launcher." \
+            --prerelease --latest=false

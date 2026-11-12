@@ -26,6 +26,7 @@ files:
   - "!legendary/**"
   - "!resources/legendary/**"
   - "!native/torrent-bridge/**"
+  - "!companion/**"
   - "!**/.vscode/*"
   - "!src/*"
   - "!native/hydra-native/target"
