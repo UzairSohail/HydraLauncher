@@ -26,9 +26,6 @@ export const getInstallErrorKey = (reason?: string) => {
   if (reason === "no_executable") return "install_no_executable";
   if (reason === "install_folder_unwritable")
     return "install_folder_unwritable";
-  if (reason === "save_backup_failed" || reason === "previous_backup_failed")
-    return "install_backup_failed";
-  if (reason === "no_release_file") return "install_no_file";
   return "install_failed";
 };
 

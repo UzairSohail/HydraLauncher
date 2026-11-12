@@ -24,7 +24,6 @@ import "./leveldb";
 import "./main-window-controls";
 import "./misc";
 import "./recompilation";
-import "./recompilation-updates";
 import "./notifications";
 import "./profile";
 import "./screenshots";

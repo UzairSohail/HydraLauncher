@@ -30,8 +30,6 @@ import {
 } from "@main/services/download-to-file";
 import {
   forgetRecompilationInstallDirectory,
-  getPreviousVersionDirectory,
-  getRecompilationBaseDirectory,
   getRecompilationInstallDirectory as getInstallDirectory,
   INSTALL_MARKER_FILE,
   type InstallMarker,
@@ -48,10 +46,6 @@ import {
 } from "./recompilation-rom";
 import recompilationSaves from "./recompilation-saves.json";
 import {
-  carryOverInFolderSaves,
-  snapshotRecompilationSaves,
-} from "./recompilation-save-snapshots";
-import {
   addRecompilationDisc,
   removeRecompilationDisc,
 } from "./recompilation-disc";
@@ -65,7 +59,7 @@ import {
 
 const MAX_NESTED_ARCHIVES = 3;
 
-export class RecompilationInstallError extends Error {}
+class RecompilationInstallError extends Error {}
 
 const installsInProgress = new Set<string>();
 const launchesInProgress = new Set<string>();
@@ -260,27 +254,6 @@ const resolveTargetDirectory = async (
   return path.join(rawParentDirectory, ref.slug);
 };
 
-export interface ResolvedRecompilationRelease {
-  version: string;
-  publishedAt: string | null;
-  sourceId: string;
-  asset: {
-    name: string;
-    url: string;
-    size: number | null;
-    sha256: string | null;
-  };
-  /** Shown in the library; kept from the current install when omitted. */
-  name?: string;
-  iconUrl?: string | null;
-}
-
-export type RecompilationReleaseResolver = (
-  ref: RecompilationRef
-) => Promise<ResolvedRecompilationRelease>;
-
-export const CATALOG_SOURCE_ID = "catalog";
-
 const fetchRelease = async (ref: RecompilationRef) => {
   const [details, { releases }] = await Promise.all([
     HydraApi.get<RecompilationDetails>(apiPath(ref), undefined, {
@@ -311,79 +284,12 @@ const fetchRelease = async (ref: RecompilationRef) => {
   return { details, release, asset };
 };
 
-const resolveCatalogRelease: RecompilationReleaseResolver = async (ref) => {
-  const { details, release, asset } = await fetchRelease(ref);
-  return {
-    version: release.version,
-    publishedAt: release.publishedAt,
-    sourceId: CATALOG_SOURCE_ID,
-    asset,
-    name: details.name,
-    iconUrl: details.iconUrl,
-  };
-};
-
-const isSafeDownloadUrl = (value: string) => {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && !url.username && !url.password;
-  } catch {
-    return false;
-  }
-};
-
-/** Keeps the installed files and saves so an update can be rolled back. */
-const backUpBeforeUpdate = async (
-  ref: RecompilationRef,
-  installDirectory: string,
-  version: string
-) => {
-  const baseDirectory = await getRecompilationBaseDirectory(installDirectory);
-  try {
-    await snapshotRecompilationSaves(
-      ref.slug,
-      baseDirectory,
-      `before-${version}`
-    );
-  } catch (error) {
-    logger.error(`Failed to back up saves for ${ref.slug}`, error);
-    throw new RecompilationInstallError("save_backup_failed");
-  }
-
-  const previous = getPreviousVersionDirectory(installDirectory);
-  const staging = `${previous}.partial`;
-  try {
-    await fs.promises.rm(staging, { recursive: true, force: true });
-    await fs.promises.cp(installDirectory, staging, {
-      recursive: true,
-      verbatimSymlinks: true,
-    });
-    await fs.promises.rm(previous, { recursive: true, force: true });
-    await fs.promises.rename(staging, previous);
-  } catch (error) {
-    logger.error(`Failed to keep the previous version of ${ref.slug}`, error);
-    await fs.promises
-      .rm(staging, { recursive: true, force: true })
-      .catch(() => {});
-    throw new RecompilationInstallError("previous_backup_failed");
-  }
-};
-
 const downloadAndInstall = async (
   ref: RecompilationRef,
   installDirectory: string,
-  onArchivePath: (archivePath: string) => void,
-  resolveRelease: RecompilationReleaseResolver
+  onArchivePath: (archivePath: string) => void
 ) => {
-  const resolved = await resolveRelease(ref);
-  const { asset } = resolved;
-  if (!isSafeDownloadUrl(asset.url)) {
-    throw new RecompilationInstallError("no_release_file");
-  }
-  const current = await readInstallMarker(installDirectory);
-  const portName = resolved.name ?? current?.name ?? ref.slug;
-  const iconUrl = resolved.iconUrl ?? current?.iconUrl ?? null;
-
+  const { details, release, asset } = await fetchRelease(ref);
   const archivePath = path.join(
     SystemPath.getPath("temp"),
     `hydra-recompilation-${ref.slug}-${path.basename(asset.name)}`
@@ -394,7 +300,7 @@ const downloadAndInstall = async (
     slug: ref.slug,
     phase: "downloading",
     loaded: 0,
-    total: asset.size ?? undefined,
+    total: asset.size,
   });
 
   await downloadToFile(asset.url, archivePath, (loaded, total) => {
@@ -402,12 +308,12 @@ const downloadAndInstall = async (
       slug: ref.slug,
       phase: "downloading",
       loaded,
-      total: total ?? asset.size ?? undefined,
+      total: total ?? asset.size,
     });
   });
 
   const { size } = await fs.promises.stat(archivePath);
-  if (asset.size !== null && size !== asset.size) {
+  if (size !== asset.size) {
     throw new Error(`Unexpected size for ${asset.name}: ${size}`);
   }
   if (asset.sha256 && (await hashFile(archivePath)) !== asset.sha256) {
@@ -415,29 +321,23 @@ const downloadAndInstall = async (
   }
 
   sendProgress({ slug: ref.slug, phase: "extracting" });
-  // After the download, so a failed download doesn't replace the kept version.
-  if (current?.slug === ref.slug) {
-    await backUpBeforeUpdate(ref, installDirectory, resolved.version);
-  }
   const executablePath = await extractRelease(
     archivePath,
     asset.name,
     installDirectory,
-    portName,
+    details.name,
     getRecompilationExecutableOverride(ref.slug)
   );
 
   const marker: InstallMarker = {
     slug: ref.slug,
     objectId: ref.objectId,
-    version: resolved.version,
+    version: release.version,
     assetName: asset.name,
     executablePath,
     installedAt: new Date().toISOString(),
-    name: portName,
-    iconUrl,
-    sourceId: resolved.sourceId,
-    publishedAt: resolved.publishedAt,
+    name: details.name,
+    iconUrl: details.iconUrl,
   };
   await fs.promises.writeFile(
     path.join(installDirectory, INSTALL_MARKER_FILE),
@@ -445,15 +345,14 @@ const downloadAndInstall = async (
   );
   await saveRecompilationInstallDirectory(ref.slug, installDirectory);
   await addRecompilationDisc(ref, installDirectory, {
-    name: portName,
-    iconUrl,
+    name: details.name,
+    iconUrl: details.iconUrl,
   });
 };
 
 export const installRecompilation = async (
   rawRef: unknown,
-  rawParentDirectory?: unknown,
-  resolveRelease: RecompilationReleaseResolver = resolveCatalogRelease
+  rawParentDirectory?: unknown
 ): Promise<RecompilationActionResult> => {
   const ref = parseRef(rawRef);
   if (!ref) return { ok: false, reason: "invalid_port" };
@@ -479,14 +378,9 @@ export const installRecompilation = async (
       rawParentDirectory,
       current?.installed === true
     );
-    await downloadAndInstall(
-      ref,
-      installDirectory,
-      (downloadPath) => {
-        archivePath = downloadPath;
-      },
-      resolveRelease
-    );
+    await downloadAndInstall(ref, installDirectory, (downloadPath) => {
+      archivePath = downloadPath;
+    });
     result = { ok: true };
     preparing = await shouldPrepareAfterUpdate(ref).catch(() => false);
   } catch (error) {
@@ -519,95 +413,6 @@ export const installRecompilation = async (
   return result;
 };
 
-export const getRecompilationPreviousVersion = async (
-  ref: RecompilationRef
-) => {
-  const installDirectory = await getInstallDirectory(ref.slug);
-  const marker = await readInstallMarker(
-    getPreviousVersionDirectory(installDirectory)
-  );
-  return marker?.slug === ref.slug ? marker.version : null;
-};
-
-/**
- * Swaps the install with the copy kept before the last update. The newer files
- * become the kept copy, so rolling back again returns to them.
- */
-export const rollbackRecompilation = async (
-  rawRef: unknown
-): Promise<RecompilationActionResult> => {
-  const ref = parseRef(rawRef);
-  if (!ref) return { ok: false, reason: "invalid_port" };
-  if (installsInProgress.has(ref.slug)) {
-    return { ok: false, reason: "already_installing" };
-  }
-
-  const installDirectory = await getInstallDirectory(ref.slug);
-  const previousDirectory = getPreviousVersionDirectory(installDirectory);
-  const current = await readInstallMarker(installDirectory);
-  const previous = await readInstallMarker(previousDirectory);
-  if (current?.slug !== ref.slug) return { ok: false, reason: "not_installed" };
-  if (previous?.slug !== ref.slug) return { ok: false, reason: "no_previous" };
-  if (await isPortRunning(ref, current.executablePath)) {
-    return { ok: false, reason: "running" };
-  }
-
-  installsInProgress.add(ref.slug);
-  let preparing = false;
-  try {
-    const currentBase = await getRecompilationBaseDirectory(installDirectory);
-    try {
-      await snapshotRecompilationSaves(
-        ref.slug,
-        currentBase,
-        `before-rollback-${current.version}`
-      );
-    } catch (error) {
-      logger.error(`Failed to back up saves for ${ref.slug}`, error);
-      return { ok: false, reason: "save_backup_failed" };
-    }
-
-    const swapDirectory = `${installDirectory}.rollback`;
-    await fs.promises.rm(swapDirectory, { recursive: true, force: true });
-    await fs.promises.rename(installDirectory, swapDirectory);
-    try {
-      await fs.promises.rename(previousDirectory, installDirectory);
-    } catch (error) {
-      await fs.promises.rename(swapDirectory, installDirectory);
-      throw error;
-    }
-    await fs.promises.rename(swapDirectory, previousDirectory);
-
-    const swappedBase = path.join(
-      previousDirectory,
-      path.relative(installDirectory, currentBase)
-    );
-    await carryOverInFolderSaves(
-      ref.slug,
-      swappedBase,
-      await getRecompilationBaseDirectory(installDirectory)
-    );
-
-    await addRecompilationDisc(ref, installDirectory, {
-      name: previous.name ?? current.name ?? ref.slug,
-      iconUrl: previous.iconUrl ?? current.iconUrl ?? null,
-    });
-    preparing = await shouldPrepareAfterUpdate(ref).catch(() => false);
-  } catch (error) {
-    logger.error(`Failed to roll back ${ref.slug}`, error);
-    return { ok: false, reason: "rollback_failed" };
-  } finally {
-    if (preparing) launchesInProgress.add(ref.slug);
-    installsInProgress.delete(ref.slug);
-  }
-
-  if (preparing) {
-    void runPreparation(ref, installDirectory);
-    return { ok: true, preparing: true };
-  }
-  return { ok: true };
-};
-
 export const uninstallRecompilation = async (
   rawRef: unknown
 ): Promise<RecompilationActionResult> => {
@@ -630,10 +435,6 @@ export const uninstallRecompilation = async (
 
   try {
     await fs.promises.rm(installDirectory, { recursive: true, force: true });
-    await fs.promises.rm(getPreviousVersionDirectory(installDirectory), {
-      recursive: true,
-      force: true,
-    });
   } catch (error) {
     logger.error(`Failed to uninstall ${ref.slug}`, error);
     return { ok: false, reason: "uninstall_failed" };

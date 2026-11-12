@@ -39,8 +39,6 @@ import type {
   RecompilationPrepareProgress,
   RecompilationRef,
   RecompilationRomSource,
-  AddUpdateSourceInput,
-  UpdateChannel,
   RetroArchCoreName,
   RetroArchCoreInstallProgress,
   RetroArchInstallProgress,
@@ -743,43 +741,6 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.on("on-recompilation-prepare-progress", listener);
     return () =>
       ipcRenderer.removeListener("on-recompilation-prepare-progress", listener);
-  },
-  getUpdateProviders: () => ipcRenderer.invoke("getUpdateProviders"),
-  getRecompilationUpdateState: (ref: RecompilationRef) =>
-    ipcRenderer.invoke("getRecompilationUpdateState", ref),
-  getRecompilationUpdateSummaries: () =>
-    ipcRenderer.invoke("getRecompilationUpdateSummaries"),
-  checkRecompilationUpdates: (ref: RecompilationRef) =>
-    ipcRenderer.invoke("checkRecompilationUpdates", ref),
-  addRecompilationUpdateSource: (
-    ref: RecompilationRef,
-    input: AddUpdateSourceInput
-  ) => ipcRenderer.invoke("addRecompilationUpdateSource", ref, input),
-  updateRecompilationUpdateSource: (
-    ref: RecompilationRef,
-    sourceId: string,
-    patch: { channel?: UpdateChannel; assetFilter?: string | null }
-  ) =>
-    ipcRenderer.invoke("updateRecompilationUpdateSource", ref, sourceId, patch),
-  removeRecompilationUpdateSource: (ref: RecompilationRef, sourceId: string) =>
-    ipcRenderer.invoke("removeRecompilationUpdateSource", ref, sourceId),
-  installRecompilationFromSource: (ref: RecompilationRef, sourceId: string) =>
-    ipcRenderer.invoke("installRecompilationFromSource", ref, sourceId),
-  rollbackRecompilation: (ref: RecompilationRef) =>
-    ipcRenderer.invoke("rollbackRecompilation", ref),
-  openRecompilationSaveSnapshots: (ref: RecompilationRef) =>
-    ipcRenderer.invoke("openRecompilationSaveSnapshots", ref),
-  onRecompilationUpdatesChanged: (cb: () => void) => {
-    const listener = () => cb();
-    ipcRenderer.on("on-recompilation-updates-changed", listener);
-    return () =>
-      ipcRenderer.removeListener("on-recompilation-updates-changed", listener);
-  },
-  onUpdateProvidersChanged: (cb: () => void) => {
-    const listener = () => cb();
-    ipcRenderer.on("on-update-providers-changed", listener);
-    return () =>
-      ipcRenderer.removeListener("on-update-providers-changed", listener);
   },
   onRecompilationInstallProgress: (
     cb: (payload: RecompilationInstallProgress) => void

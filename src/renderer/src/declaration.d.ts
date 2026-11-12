@@ -66,12 +66,6 @@ import type {
   RecompilationInstallState,
   RecompilationRef,
   RecompilationRomSource,
-  AddUpdateSourceInput,
-  RecompilationUpdateState,
-  RecompilationUpdateSummary,
-  UpdateChannel,
-  UpdateProviderInfo,
-  UpdateSourceActionResult,
   RecompilationRomState,
   EmulatorInstallResult,
   ResolvedInstallOption,
@@ -857,39 +851,6 @@ declare global {
     getRecompilationInstallState: (
       ref: RecompilationRef
     ) => Promise<RecompilationInstallState | null>;
-    getUpdateProviders: () => Promise<UpdateProviderInfo[]>;
-    getRecompilationUpdateState: (
-      ref: RecompilationRef
-    ) => Promise<RecompilationUpdateState | null>;
-    getRecompilationUpdateSummaries: () => Promise<
-      RecompilationUpdateSummary[]
-    >;
-    checkRecompilationUpdates: (
-      ref: RecompilationRef
-    ) => Promise<RecompilationUpdateState | null>;
-    addRecompilationUpdateSource: (
-      ref: RecompilationRef,
-      input: AddUpdateSourceInput
-    ) => Promise<UpdateSourceActionResult>;
-    updateRecompilationUpdateSource: (
-      ref: RecompilationRef,
-      sourceId: string,
-      patch: { channel?: UpdateChannel; assetFilter?: string | null }
-    ) => Promise<UpdateSourceActionResult>;
-    removeRecompilationUpdateSource: (
-      ref: RecompilationRef,
-      sourceId: string
-    ) => Promise<UpdateSourceActionResult>;
-    installRecompilationFromSource: (
-      ref: RecompilationRef,
-      sourceId: string
-    ) => Promise<RecompilationActionResult>;
-    rollbackRecompilation: (
-      ref: RecompilationRef
-    ) => Promise<RecompilationActionResult>;
-    openRecompilationSaveSnapshots: (ref: RecompilationRef) => Promise<boolean>;
-    onRecompilationUpdatesChanged: (cb: () => void) => () => void;
-    onUpdateProvidersChanged: (cb: () => void) => () => void;
     installRecompilation: (
       ref: RecompilationRef,
       parentDirectory?: string

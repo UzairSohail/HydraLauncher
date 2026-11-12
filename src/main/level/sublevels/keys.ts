@@ -61,5 +61,4 @@ export const levelKeys = {
   chatNotificationCursor: "chatNotificationCursor", // Newest chat message already announced
   leaderboardNotificationsShown: "leaderboardNotificationsShown",
   recompilationInstalls: "recompilationInstalls",
-  recompilationUpdates: "recompilationUpdates", // Update sources and their last check, per port
 };
