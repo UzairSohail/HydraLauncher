@@ -7,7 +7,10 @@ import {
   resolveAnyClaim,
 } from "../../../shared/companion.js";
 import { Downloader } from "../../../shared/constants.js";
-import { pickCompanionDownload as pick } from "./pick-download.js";
+import {
+  pickCompanionDownload as pick,
+  rankCompanionDownloads,
+} from "./pick-download.js";
 
 /** The parts of @shared's getDownloadersForUri these tests need. */
 const downloadersForUri = (uri: string) => {
@@ -120,6 +123,23 @@ describe("picking a download for a phone request", () => {
       downloader: Downloader.Gofile,
       uri: repack.uris[1],
     });
+  });
+
+  it("tries a host's own downloader before handing an unknown host to debrid", () => {
+    const hosters = {
+      uris: ["https://megadb.net/abc", "https://gofile.io/d/xyz"],
+    };
+    assert.deepEqual(
+      rankCompanionDownloads(
+        hosters,
+        { allDebridApiToken: "key" },
+        downloadersForUri
+      ),
+      [
+        { downloader: Downloader.Gofile, uri: hosters.uris[1] },
+        { downloader: Downloader.AllDebrid, uri: hosters.uris[0] },
+      ]
+    );
   });
 
   it("never torrents without debrid", () => {

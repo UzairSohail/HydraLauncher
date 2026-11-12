@@ -42,33 +42,57 @@ const isConfigured = (
   }
 };
 
+const DEBRID = new Set<Downloader>(PREFERRED);
+
 /**
- * Picks the link and downloader for a listing queued from the phone, the way
- * the download dialog's defaults would: the preferred debrid service when one
- * is set up, otherwise a direct download. Torrents are never downloaded peer to
- * peer, only through debrid.
+ * How sure we are that an option works, best first:
+ * 0. a torrent through debrid (debrid is the only way torrents are fetched),
+ * 1. a host with its own downloader, such as Gofile or Buzzheavier,
+ * 2. any other hoster link handed to debrid, which the service may not
+ *    support ("This host or link is not supported").
  */
-export const pickCompanionDownload = (
+const tier = (option: { downloader: Downloader; uri: string }) => {
+  if (option.uri.startsWith("magnet:")) return 0;
+  return DEBRID.has(option.downloader) ? 2 : 1;
+};
+
+const preference = (downloader: Downloader) => {
+  const index = PREFERRED.indexOf(downloader);
+  return index === -1 ? PREFERRED.length : index;
+};
+
+/**
+ * Every link and downloader for a listing queued from the phone that this
+ * computer can use, in the order to try them. Torrents are never downloaded
+ * peer to peer, only through debrid.
+ */
+export const rankCompanionDownloads = (
   repack: Pick<CompanionRepack, "uris" | "unavailableUris">,
   tokens: DebridTokens | null | undefined,
   /** `getDownloadersForUri` from @shared, passed in so this stays testable. */
   getDownloadersForUri: (uri: string) => Downloader[]
-): { downloader: Downloader; uri: string } | null => {
+): { downloader: Downloader; uri: string }[] => {
   const unavailable = new Set(repack.unavailableUris ?? []);
-  const options: { downloader: Downloader; uri: string }[] = [];
+  const options: { downloader: Downloader; uri: string; order: number }[] = [];
   for (const uri of repack.uris) {
     if (unavailable.has(uri)) continue;
     for (const downloader of getDownloadersForUri(uri)) {
-      if (isConfigured(downloader, tokens)) options.push({ downloader, uri });
+      if (isConfigured(downloader, tokens)) {
+        options.push({ downloader, uri, order: options.length });
+      }
     }
   }
-  if (options.length === 0) return null;
-
-  for (const downloader of PREFERRED) {
-    const option = options.find(
-      (candidate) => candidate.downloader === downloader
-    );
-    if (option) return option;
-  }
-  return options[0];
+  return options
+    .sort(
+      (a, b) =>
+        tier(a) - tier(b) ||
+        preference(a.downloader) - preference(b.downloader) ||
+        a.order - b.order
+    )
+    .map(({ downloader, uri }) => ({ downloader, uri }));
 };
+
+/** The first option `rankCompanionDownloads` would try, or null. */
+export const pickCompanionDownload = (
+  ...args: Parameters<typeof rankCompanionDownloads>
+) => rankCompanionDownloads(...args)[0] ?? null;

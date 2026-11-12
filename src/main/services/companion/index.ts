@@ -20,6 +20,7 @@ import { appVersion, defaultDownloadsPath } from "@main/constants";
 import {
   ANY_DEVICE,
   COMPANION_FILE,
+  Downloader,
   companionDeviceFile,
   getDownloadersForUri,
   getRepackUriParts,
@@ -40,7 +41,7 @@ import { PersonalCloud } from "../personal-cloud";
 import { WindowManager } from "../window-manager";
 import { getUserPreferences } from "../user-preferences";
 import { DownloadManager } from "../download";
-import { pickCompanionDownload } from "./pick-download";
+import { rankCompanionDownloads } from "./pick-download";
 
 /** How often an open launcher looks for new requests from the phone. */
 const POLL_MS = 90_000;
@@ -320,12 +321,12 @@ export class CompanionLink {
 
   private static async startDownload(request: CompanionRequest) {
     const preferences = await getUserPreferences();
-    const pick = pickCompanionDownload(
+    const options = rankCompanionDownloads(
       request.repack,
       preferences,
       getDownloadersForUri
     );
-    if (!pick) {
+    if (options.length === 0) {
       throw new Error(
         "None of this listing's links can be downloaded with the services set up on this computer"
       );
@@ -350,22 +351,54 @@ export class CompanionLink {
       game && !game.isDeleted && isInstalled(game, existing)
     );
 
-    const payload: StartGameDownloadPayload = {
-      objectId: request.objectId,
-      shop,
-      title: request.title,
-      downloader: pick.downloader,
-      downloadPath: preferences?.downloadsPath ?? defaultDownloadsPath,
-      uri: pick.uri,
-      parts: getRepackUriParts(request.repack, pick.uri),
-      automaticallyExtract: preferences?.extractFilesByDefault ?? true,
-      automaticallyDeleteArchiveFiles:
-        preferences?.deleteArchiveFilesAfterExtractionByDefault ?? true,
-      fileSize: request.repack.fileSize,
-      repack: toInstalledRepackInfo(request.repack, pick.uri),
-      replaceInstalledVersion,
-    };
+    // A debrid service can refuse a host it doesn't support, so try each
+    // usable link in turn until one starts.
+    const failures: string[] = [];
+    for (const pick of options) {
+      const payload: StartGameDownloadPayload = {
+        objectId: request.objectId,
+        shop,
+        title: request.title,
+        downloader: pick.downloader,
+        downloadPath: preferences?.downloadsPath ?? defaultDownloadsPath,
+        uri: pick.uri,
+        parts: getRepackUriParts(request.repack, pick.uri),
+        automaticallyExtract: preferences?.extractFilesByDefault ?? true,
+        automaticallyDeleteArchiveFiles:
+          preferences?.deleteArchiveFilesAfterExtractionByDefault ?? true,
+        fileSize: request.repack.fileSize,
+        repack: toInstalledRepackInfo(request.repack, pick.uri),
+        replaceInstalledVersion,
+      };
 
+      try {
+        await this.startPayload(payload);
+        WindowManager.sendToAppWindows("on-library-batch-complete");
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const host = pick.uri.startsWith("magnet:")
+          ? "torrent"
+          : (() => {
+              try {
+                return new URL(pick.uri).hostname;
+              } catch {
+                return "link";
+              }
+            })();
+        failures.push(`${Downloader[pick.downloader]} (${host}): ${message}`);
+        logger.warn(
+          `[Companion] ${request.title}: ${pick.downloader} couldn't start ${host}, trying the next link`,
+          error
+        );
+      }
+    }
+    throw new Error(
+      failures.length === 1 ? failures[0] : `No link worked. ${failures.join("; ")}`
+    );
+  }
+
+  private static async startPayload(payload: StartGameDownloadPayload) {
     // Imported here: the event modules import the services barrel.
     const busy = DownloadManager.hasActiveDownload();
     const result = busy
@@ -380,7 +413,6 @@ export class CompanionLink {
       const error = (result as { error?: string } | undefined)?.error;
       throw new Error(error || "The download could not start");
     }
-    WindowManager.sendToAppWindows("on-library-batch-complete");
   }
 
   /** Moves requests along as their downloads progress on this computer. */
