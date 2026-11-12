@@ -47,7 +47,6 @@ const ThemeEditor = lazy(() => import("./pages/theme-editor/theme-editor"));
 const Library = lazy(() => import("./pages/library/library"));
 const Notifications = lazy(() => import("./pages/notifications/notifications"));
 const Shop = lazy(() => import("./pages/shop/shop"));
-const Leaderboards = lazy(() => import("./pages/leaderboards/leaderboards"));
 const AchievementNotification = lazy(() =>
   import("./pages/achievements/notification/achievement-notification").then(
     (module) => ({ default: module.AchievementNotification })
@@ -193,7 +192,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                     <Route path="/achievements" element={<Achievements />} />
                     <Route path="/notifications" element={<Notifications />} />
                     <Route path="/shop" element={<Shop />} />
-                    <Route path="/leaderboards" element={<Leaderboards />} />
                   </Route>
 
                   <Route path="/theme-editor" element={<ThemeEditor />} />

@@ -183,7 +183,20 @@ export interface SteamGame {
 
 export type AppUpdaterEvent =
   | { type: "update-available"; info: { version: string } }
+  | { type: "download-progress"; percent: number }
   | { type: "update-downloaded" };
+
+/** What a check started from the version badge in the title bar found. */
+export type ManualUpdateCheckResult =
+  | { status: "up-to-date"; version: string }
+  | {
+      status: "update-available";
+      version: string;
+      isAutoInstallAvailable: boolean;
+    }
+  | { status: "update-downloaded"; version: string }
+  | { status: "not-packaged" }
+  | { status: "error"; message: string };
 
 /* Events */
 export interface StartGameDownloadPayload {

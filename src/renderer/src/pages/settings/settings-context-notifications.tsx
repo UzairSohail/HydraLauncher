@@ -10,12 +10,7 @@ import { useTranslation } from "react-i18next";
 
 import { Button, CheckboxField, SelectField } from "@renderer/components";
 import { settingsContext } from "@renderer/context";
-import {
-  useAppSelector,
-  useGlobalLeaderboardsFeature,
-  useUserDetails,
-} from "@renderer/hooks";
-import { logger } from "@renderer/logger";
+import { useAppSelector } from "@renderer/hooks";
 import type {
   AchievementCustomNotificationPosition,
   UserPreferences,
@@ -35,9 +30,6 @@ const buildForm = (preferences: UserPreferences | null) => ({
     preferences?.friendStartGameNotificationsEnabled ?? true,
   chatMessageNotificationsEnabled:
     preferences?.chatMessageNotificationsEnabled ?? true,
-  leaderboardSlamEnabled: preferences?.leaderboardSlamEnabled ?? true,
-  leaderboardDropNotificationsEnabled:
-    preferences?.leaderboardDropNotificationsEnabled ?? true,
   achievementNotificationsEnabled:
     preferences?.achievementNotificationsEnabled ?? true,
   achievementCustomNotificationsEnabled:
@@ -61,37 +53,6 @@ export function SettingsContextNotifications() {
   const volumeUpdateTimeoutRef = useRef<NodeJS.Timeout>();
 
   const [form, setForm] = useState(() => buildForm(userPreferences));
-
-  const { userDetails, patchUser } = useUserDetails();
-  const { isEnabled: isGlobalLeaderboardsEnabled } =
-    useGlobalLeaderboardsFeature();
-  const savedLeaderboardNotifications =
-    userDetails?.allowLeaderboardNotifications ?? true;
-  const [leaderboardNotifications, setLeaderboardNotifications] = useState(
-    savedLeaderboardNotifications
-  );
-
-  useEffect(() => {
-    setLeaderboardNotifications(savedLeaderboardNotifications);
-  }, [savedLeaderboardNotifications]);
-
-  const toggleLeaderboardNotifications = async () => {
-    const next = !leaderboardNotifications;
-    setLeaderboardNotifications(next);
-    try {
-      await patchUser({ allowLeaderboardNotifications: next });
-    } catch (error) {
-      logger.error("Failed to update leaderboard notifications", error);
-      setLeaderboardNotifications(!next);
-    }
-  };
-
-  const hintedLabel = (label: string, hint: string) => (
-    <span className="settings-general__hinted-label">
-      {label}
-      <small>{hint}</small>
-    </span>
-  );
 
   useEffect(() => {
     if (!userPreferences) return;
@@ -210,53 +171,6 @@ export function SettingsContextNotifications() {
           }
         />
       </div>
-
-      {userDetails && isGlobalLeaderboardsEnabled && (
-        <div className="settings-context-panel__group">
-          <h3>{t("leaderboard_notifications")}</h3>
-
-          <CheckboxField
-            label={hintedLabel(
-              t("enable_leaderboard_notifications"),
-              t("enable_leaderboard_notifications_hint")
-            )}
-            checked={leaderboardNotifications}
-            onChange={toggleLeaderboardNotifications}
-          />
-
-          <CheckboxField
-            label={hintedLabel(
-              t("enable_leaderboard_slam"),
-              t("enable_leaderboard_slam_hint")
-            )}
-            checked={leaderboardNotifications && form.leaderboardSlamEnabled}
-            disabled={!leaderboardNotifications}
-            onChange={() =>
-              handleChange({
-                leaderboardSlamEnabled: !form.leaderboardSlamEnabled,
-              })
-            }
-          />
-
-          <CheckboxField
-            label={hintedLabel(
-              t("enable_leaderboard_drop_notifications"),
-              t("enable_leaderboard_drop_notifications_hint")
-            )}
-            checked={
-              leaderboardNotifications &&
-              form.leaderboardDropNotificationsEnabled
-            }
-            disabled={!leaderboardNotifications}
-            onChange={() =>
-              handleChange({
-                leaderboardDropNotificationsEnabled:
-                  !form.leaderboardDropNotificationsEnabled,
-              })
-            }
-          />
-        </div>
-      )}
 
       <div className="settings-context-panel__group">
         <h3>{t("achievement_notifications")}</h3>
