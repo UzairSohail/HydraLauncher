@@ -414,6 +414,7 @@ contextBridge.exposeInMainWorld("electron", {
     return () =>
       ipcRenderer.removeListener("on-settings-sync-status", listener);
   },
+  getSyncOverview: () => ipcRenderer.invoke("getSyncOverview"),
   /* Phone app link (Google Drive) */
   getCompanionLinkStatus: () => ipcRenderer.invoke("getCompanionLinkStatus"),
   setCompanionLinkEnabled: (enabled: boolean) =>

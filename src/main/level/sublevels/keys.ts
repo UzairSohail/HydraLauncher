@@ -20,6 +20,7 @@ export const levelKeys = {
   settingsSync: "settingsSync", // Settings sync state: device id, switch, last sync, entries
   settingsSyncKey: "settingsSyncKey", // Settings sync key, encrypted with safeStorage
   achievementSync: "achievementSync", // Achievement sync through Google Drive: device id, unlocks from all devices
+  personalCloudLastSync: "personalCloudLastSync", // The last cloud save sync on this device, for the sync status page
   companionLink: "companionLink", // Phone app link through Google Drive: device id and name, requests from the phone
   language: "language",
   screenState: "screenState",

@@ -17,7 +17,7 @@ import {
   VideoIcon,
   ShieldCheckIcon,
 } from "@primer/octicons-react";
-import { Camera, Gamepad2, Wrench } from "lucide-react";
+import { Camera, Gamepad2, RefreshCw, Wrench } from "lucide-react";
 import { SettingsContextGeneral } from "./settings-context-general";
 import { SettingsContextDownloads } from "./settings-context-downloads";
 import { SettingsContextDownloadSources } from "./settings-context-download-sources";
@@ -25,6 +25,7 @@ import { SettingsContextNotifications } from "./settings-context-notifications";
 import { SettingsContextContentGameplay } from "./settings-context-content-gameplay";
 import { SettingsContextScreenshots } from "./settings-context-screenshots";
 import { SettingsContextIntegrations } from "./settings-context-integrations";
+import { SettingsContextSyncStatus } from "./settings-context-sync-status";
 import { SettingsContextCompatibility } from "./settings-context-compatibility";
 import { SettingsContextBigPicture } from "./settings-context-big-picture";
 import { SettingsContextEmulation } from "./emulation/settings-context-emulation";
@@ -76,6 +77,11 @@ export default function Settings() {
         id: "integrations" as const,
         label: t("integrations"),
         icon: <CloudIcon size={16} />,
+      },
+      {
+        id: "sync_status" as const,
+        label: t("sync_status"),
+        icon: <RefreshCw size={16} />,
       },
       {
         id: "compatibility" as const,
@@ -142,6 +148,10 @@ export default function Settings() {
 
             if (selectedCategoryId === "integrations") {
               return <SettingsContextIntegrations />;
+            }
+
+            if (selectedCategoryId === "sync_status") {
+              return <SettingsContextSyncStatus />;
             }
 
             if (selectedCategoryId === "compatibility") {

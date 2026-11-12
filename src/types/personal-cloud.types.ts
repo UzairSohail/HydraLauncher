@@ -1,4 +1,9 @@
 import type { GameShop } from "./game.types";
+import type {
+  AchievementSyncStatus,
+  CompanionLinkStatus,
+  SettingsSyncStatus,
+} from "./settings-sync.types";
 
 /**
  * Cloud saves through Cloud Save Manager, the user's own Google Drive sync.
@@ -100,6 +105,21 @@ export interface PersonalCloudGameState {
   status: PersonalCloudStatus;
   /** Null when the game has no exe yet, so it can't be linked. */
   info: PersonalCloudGameInfo | null;
+}
+
+/** The last cloud save sync on this device, kept for the sync status page. */
+export interface PersonalCloudLastSync extends PersonalCloudSyncEvent {
+  at: number;
+  title: string | null;
+}
+
+/** Everything that syncs through Google Drive, for the sync status page. */
+export interface SyncOverview {
+  google: PersonalCloudStatus | null;
+  saves: PersonalCloudLastSync | null;
+  settings: SettingsSyncStatus | null;
+  achievements: AchievementSyncStatus | null;
+  companion: CompanionLinkStatus | null;
 }
 
 /** Sent to the app windows after each automatic or manual sync. */

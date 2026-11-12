@@ -5,7 +5,7 @@ import { CompanionLink } from "@main/services/companion";
 import { PersonalCloud } from "@main/services/personal-cloud";
 import { SettingsSync } from "@main/services/settings-sync";
 import { WindowManager } from "@main/services/window-manager";
-import type { GameShop, PersonalCloudStatus } from "@types";
+import type { GameShop, PersonalCloudStatus, SyncOverview } from "@types";
 
 import { registerEvent } from "../register-event";
 
@@ -127,6 +127,19 @@ registerEvent("syncAchievementsNow", async () => {
 });
 
 registerEvent("getCompanionLinkStatus", () => CompanionLink.getStatus());
+
+/** One call for the sync status page; a part that fails shows as unknown. */
+registerEvent("getSyncOverview", async (): Promise<SyncOverview> => {
+  const safe = <T>(work: () => Promise<T>) => work().catch(() => null);
+  const [google, saves, settings, achievements, companion] = await Promise.all([
+    safe(() => PersonalCloud.status()),
+    safe(() => PersonalCloud.getLastSync()),
+    safe(() => SettingsSync.getStatus()),
+    safe(() => AchievementSync.getStatus()),
+    safe(() => CompanionLink.getStatus()),
+  ]);
+  return { google, saves, settings, achievements, companion };
+});
 
 registerEvent(
   "setCompanionLinkEnabled",
