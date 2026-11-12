@@ -1,5 +1,10 @@
 import type { ScreenshotCommentsPolicy } from "./screenshot.types";
-import type { Cracker, DownloadSourceStatus, Downloader } from "@shared";
+import type {
+  Cracker,
+  DownloadSourceStatus,
+  Downloader,
+  InstalledRepackInfo,
+} from "@shared";
 import type { SteamAppDetails } from "./steam.types";
 import type {
   AchievementCustomNotificationPosition,
@@ -194,6 +199,10 @@ export interface StartGameDownloadPayload {
   fileSize?: string | null;
   fileIndices?: number[];
   selectedFilesSize?: number | null;
+  /** The source listing being downloaded, remembered to check for updates. */
+  repack?: InstalledRepackInfo;
+  /** Remove the installed version first, after backing up its saves. */
+  replaceInstalledVersion?: boolean;
 }
 
 export interface UserFriend {
@@ -974,6 +983,7 @@ export type LocalNotificationType =
   | "EXTRACTION_COMPLETE"
   | "DOWNLOAD_COMPLETE"
   | "UPDATE_AVAILABLE"
+  | "GAME_UPDATE_AVAILABLE"
   | "ACHIEVEMENT_UNLOCKED"
   | "SCAN_GAMES_COMPLETE";
 

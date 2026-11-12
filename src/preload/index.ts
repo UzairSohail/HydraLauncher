@@ -1278,6 +1278,9 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("setGameVisibility", shop, objectId, field, value),
   clearNewDownloadOptions: (shop: GameShop, objectId: string) =>
     ipcRenderer.invoke("clearNewDownloadOptions", shop, objectId),
+  checkGameUpdates: () => ipcRenderer.invoke("checkGameUpdates"),
+  skipGameUpdate: (shop: GameShop, objectId: string) =>
+    ipcRenderer.invoke("skipGameUpdate", shop, objectId),
   toggleGamePin: (shop: GameShop, objectId: string, pinned: boolean) =>
     ipcRenderer.invoke("toggleGamePin", shop, objectId, pinned),
   updateLaunchOptions: (

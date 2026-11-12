@@ -573,6 +573,8 @@ declare global {
       shop: GameShop,
       objectId: string
     ) => Promise<void>;
+    checkGameUpdates: () => Promise<void>;
+    skipGameUpdate: (shop: GameShop, objectId: string) => Promise<void>;
     toggleGamePin: (
       shop: GameShop,
       objectId: string,

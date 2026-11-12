@@ -13,6 +13,11 @@
     &--disabled {
       opacity: 0.5;
     }
+
+    &--update {
+      border-color: globals.$brand-teal;
+      color: globals.$brand-teal;
+    }
   }
 
   &__container {

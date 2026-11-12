@@ -7,6 +7,7 @@ import {
   logger,
 } from "@main/services";
 import { createGame } from "@main/services/library-sync";
+import { GameUpdates } from "@main/services/game-updates";
 import { downloadsSublevel, gamesSublevel, levelKeys } from "@main/level";
 import { DownloadError, isBlockedTorrentDownload, parseBytes } from "@shared";
 import {
@@ -34,6 +35,8 @@ const startGameDownload = async (
     fileSize,
     fileIndices,
     selectedFilesSize,
+    repack,
+    replaceInstalledVersion,
   } = payload;
 
   const parsedFileSize = parseBytes(fileSize ?? null);
@@ -78,7 +81,15 @@ const startGameDownload = async (
     if (!prepareRealDebridInBackground) {
       await DownloadOrchestrator.validateDownloadOrMarkPending(download);
     }
+    if (replaceInstalledVersion) {
+      // Only after the new download checked out, so a bad link or a missing
+      // debrid key never leaves the game uninstalled.
+      await GameUpdates.removeInstalledVersion(shop, objectId);
+    }
     await prepareGameEntry({ gameKey, title, objectId, shop });
+    if (repack) {
+      await GameUpdates.recordInstalledRepack(shop, objectId, repack);
+    }
     await DownloadManager.cancelDownload(gameKey).catch(() => null);
     await downloadsSublevel.put(gameKey, download);
     didWriteDownload = true;

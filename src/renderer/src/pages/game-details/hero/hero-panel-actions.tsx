@@ -8,6 +8,7 @@ import {
   PinSlashIcon,
   PlayIcon,
   PlusCircleIcon,
+  SyncIcon,
 } from "@primer/octicons-react";
 import { Button, ConfirmationModal, Modal } from "@renderer/components";
 import type { LibraryGame } from "@types";
@@ -71,6 +72,7 @@ export function HeroPanelActions() {
     setShowGameOptionsModal,
     setGameOptionsInitialCategory,
     setShowRepacksModal,
+    setShowGameUpdateModal,
     updateGame,
     selectGameExecutable,
     isTransferring,
@@ -680,7 +682,7 @@ export function HeroPanelActions() {
     }
 
     if (game?.executablePath || isPlayableClassics) {
-      return (
+      const playButton = (
         <Button
           onClick={openGame}
           theme="outline"
@@ -690,6 +692,24 @@ export function HeroPanelActions() {
           <PlayIcon />
           {t("play")}
         </Button>
+      );
+
+      if (!game?.availableUpdate || isGameDownloading) return playButton;
+
+      return (
+        <>
+          {playButton}
+          <Button
+            onClick={() => setShowGameUpdateModal(true)}
+            theme="outline"
+            disabled={deleting}
+            className="hero-panel-actions__action hero-panel-actions__action--update"
+            title={game.availableUpdate.title}
+          >
+            <SyncIcon />
+            {t("game_update_button")}
+          </Button>
+        </>
       );
     }
 

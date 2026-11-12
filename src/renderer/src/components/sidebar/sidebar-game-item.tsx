@@ -12,7 +12,7 @@ import {
   SteamLibraryBadge,
   useGameActions,
 } from "..";
-import { HeartFillIcon } from "@primer/octicons-react";
+import { HeartFillIcon, SyncIcon } from "@primer/octicons-react";
 import { useAppSelector, useToast } from "@renderer/hooks";
 import { useCollectionContextMenu } from "@renderer/context";
 import { getLibraryPresentationBadgeSource } from "@renderer/pages/library/library-category";
@@ -173,6 +173,15 @@ export const SidebarGameItem = memo(function SidebarGameItem({
                 +{game.newDownloadOptionsCount}
               </span>
             )}
+
+          {game.availableUpdate && (
+            <span
+              className="sidebar__game-update-icon"
+              title={game.availableUpdate.title}
+            >
+              <SyncIcon size={12} />
+            </span>
+          )}
 
           {game.favorite && (
             <HeartFillIcon size={12} className="sidebar__game-favorite-icon" />
