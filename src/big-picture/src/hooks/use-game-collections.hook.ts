@@ -12,9 +12,7 @@ export function useGameCollections() {
     if (!IS_DESKTOP) return;
 
     try {
-      const response = await globalThis.window.electron.hydraApi.get<
-        GameCollection[]
-      >("/profile/games/collections", { needsAuth: true });
+      const response = await globalThis.window.electron.getGameCollections();
 
       setCollections(Array.isArray(response) ? response : []);
       setHasLoadedCollections(true);

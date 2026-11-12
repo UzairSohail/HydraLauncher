@@ -1,4 +1,9 @@
-import type { DownloadSource, Theme, UserPreferences } from "@types";
+import type {
+  DownloadSource,
+  LocalGameCollection,
+  Theme,
+  UserPreferences,
+} from "@types";
 import type { PreferenceSecrets } from "../user-preferences/preference-secrets";
 import { openJson, sealJson, type SealedBox } from "./secret-box.js";
 import {
@@ -16,6 +21,9 @@ export type SyncedTheme = Pick<
   "id" | "name" | "author" | "authorName" | "isActive" | "code"
 >;
 
+/** A library collection, with its member games in custom order. */
+export type SyncedGameCollection = Omit<LocalGameCollection, "id">;
+
 /** The synced state, as held locally and (with secrets sealed) in Drive. */
 export interface SettingsSyncState {
   preferences: SyncEntries<unknown>;
@@ -24,6 +32,8 @@ export interface SettingsSyncState {
   downloadSources: SyncEntries<SyncedDownloadSource>;
   /** Keyed by theme ID. */
   themes: SyncEntries<SyncedTheme>;
+  /** Keyed by collection ID. */
+  gameCollections: SyncEntries<SyncedGameCollection>;
 }
 
 /** `hydra/settings.json` in Drive. */
@@ -35,6 +45,8 @@ export interface SettingsSyncDocument {
   secrets: SealedBox | null;
   downloadSources: SyncEntries<SyncedDownloadSource>;
   themes: SyncEntries<SyncedTheme>;
+  /** Added after version 1 shipped; older documents don't have it. */
+  gameCollections?: SyncEntries<SyncedGameCollection>;
 }
 
 export const emptySettingsSyncState = (): SettingsSyncState => ({
@@ -42,6 +54,7 @@ export const emptySettingsSyncState = (): SettingsSyncState => ({
   secrets: {},
   downloadSources: {},
   themes: {},
+  gameCollections: {},
 });
 
 export const pickSyncedPreferences = (
@@ -79,6 +92,7 @@ export const toSettingsDocument = (
     Object.keys(state.secrets).length > 0 ? sealJson(key, state.secrets) : null,
   downloadSources: state.downloadSources,
   themes: state.themes,
+  gameCollections: state.gameCollections,
 });
 
 export const fromSettingsDocument = (
@@ -96,6 +110,7 @@ export const fromSettingsDocument = (
       : {},
     downloadSources: document.downloadSources ?? {},
     themes: document.themes ?? {},
+    gameCollections: document.gameCollections ?? {},
   };
 };
 
@@ -112,6 +127,7 @@ const SECTIONS = [
   "secrets",
   "downloadSources",
   "themes",
+  "gameCollections",
 ] as const satisfies readonly (keyof SettingsSyncState)[];
 
 export const mergeSettingsState = (

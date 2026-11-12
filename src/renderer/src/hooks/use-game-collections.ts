@@ -39,14 +39,9 @@ export function useGameCollections() {
       dispatch(setCollectionsLoading(true));
 
       try {
-        const response = await window.electron.hydraApi.get<GameCollection[]>(
-          "/profile/games/collections",
-          { needsAuth: true }
-        );
-
         const collections = ensureArray<GameCollection>(
-          response,
-          "/profile/games/collections"
+          await window.electron.getGameCollections(),
+          "getGameCollections"
         );
 
         dispatch(setCollections(collections));
@@ -108,14 +103,12 @@ export function useGameCollections() {
                 collectionIds: nextCollectionIds,
               })
             );
-            if (member.shop !== "custom") {
-              dispatch(
-                applyCollectionAssignment({
-                  previousCollectionIds: getNormalizedCollectionIds(member),
-                  nextCollectionIds,
-                })
-              );
-            }
+            dispatch(
+              applyCollectionAssignment({
+                previousCollectionIds: getNormalizedCollectionIds(member),
+                nextCollectionIds,
+              })
+            );
           }
         );
       } finally {
@@ -137,13 +130,7 @@ export function useGameCollections() {
         throw new Error("game/collection-name-already-in-use");
       }
 
-      const response = await window.electron.hydraApi.post<GameCollection>(
-        "/profile/games/collections",
-        {
-          data: { name },
-          needsAuth: true,
-        }
-      );
+      const response = await window.electron.createGameCollection(name);
 
       dispatch(addCollection(response));
 

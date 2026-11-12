@@ -6,6 +6,7 @@ export const levelKeys = {
   user: "user",
   auth: "auth",
   themes: "themes",
+  gameCollections: "gameCollections", // Library collections, synced through Google Drive
   gameShopAssets: "gameShopAssets",
   artworkSelection: "artworkSelection",
   gameStatsCache: "gameStatsAssets",

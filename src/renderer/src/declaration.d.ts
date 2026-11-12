@@ -9,6 +9,7 @@ import type {
   AppUpdaterEvent,
   ManualUpdateCheckResult,
   GameShop,
+  GameCollection,
   Steam250Game,
   DownloadProgress,
   SeedingStatus,
@@ -589,6 +590,10 @@ declare global {
       collectionId: string,
       games: { shop: GameShop; objectId: string }[]
     ) => Promise<void>;
+    getGameCollections: () => Promise<GameCollection[]>;
+    createGameCollection: (name: string) => Promise<GameCollection>;
+    renameGameCollection: (id: string, name: string) => Promise<void>;
+    deleteGameCollection: (id: string) => Promise<void>;
     clearNewDownloadOptions: (
       shop: GameShop,
       objectId: string

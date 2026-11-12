@@ -1317,6 +1317,13 @@ contextBridge.exposeInMainWorld("electron", {
     collectionId: string,
     games: { shop: GameShop; objectId: string }[]
   ) => ipcRenderer.invoke("setCollectionGameOrder", collectionId, games),
+  getGameCollections: () => ipcRenderer.invoke("getGameCollections"),
+  createGameCollection: (name: string) =>
+    ipcRenderer.invoke("createGameCollection", name),
+  renameGameCollection: (id: string, name: string) =>
+    ipcRenderer.invoke("renameGameCollection", id, name),
+  deleteGameCollection: (id: string) =>
+    ipcRenderer.invoke("deleteGameCollection", id),
   setGameVisibility: (
     shop: GameShop,
     objectId: string,

@@ -36,7 +36,7 @@ import {
   SyncIcon,
 } from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
-import { AuthPage, groupLibraryGames, removeDiacritics } from "@shared";
+import { groupLibraryGames, removeDiacritics } from "@shared";
 import { GameCollection, LibraryGame } from "@types";
 import {
   Button,
@@ -532,13 +532,8 @@ export default function Library() {
   }, [updateLibrary]);
 
   const handleCreateCollectionButtonClick = useCallback(() => {
-    if (!userDetails) {
-      window.electron.openAuthWindow(AuthPage.SignIn);
-      return;
-    }
-
     setShowCreateCollectionModal(true);
-  }, [userDetails]);
+  }, []);
 
   useEffect(() => {
     if (!selectedCollectionId) return;
@@ -1300,7 +1295,6 @@ export default function Library() {
                 hiddenCollectionId={HIDDEN_COLLECTION_ID}
                 onCollectionSelect={handleCollectionSelect}
                 onCollectionCreate={handleCreateCollectionButtonClick}
-                canCreateCollection={Boolean(userDetails)}
                 onCollectionContextMenu={openCollectionContextMenu}
                 showSources={showSourceFilter}
                 sources={availableSources}

@@ -200,9 +200,9 @@ export function GameContextMenu({
   }, [visible]);
 
   useEffect(() => {
-    if (!visible || !userDetails) return;
+    if (!visible) return;
     void loadCollections();
-  }, [visible, loadCollections, userDetails]);
+  }, [visible, loadCollections]);
 
   useEffect(() => {
     if (!visible) return;
@@ -331,21 +331,15 @@ export function GameContextMenu({
       closeOnClick: false,
       disabled: isDeleting,
     })),
-    // Collections live in a Hydra account, which Nacho Launcher can't sign
-    // in to, so creating one is only offered to a signed-in session.
-    ...(userDetails
-      ? [
-          {
-            id: "collection-create",
-            label: t("create_collection"),
-            icon: <PlusIcon size={16} />,
-            separator: collections.length > 0,
-            onClick: () => setShowCreateCollectionModal(true),
-            closeOnClick: false,
-            disabled: isDeleting || Boolean(pendingCollectionId),
-          },
-        ]
-      : []),
+    {
+      id: "collection-create",
+      label: t("create_collection"),
+      icon: <PlusIcon size={16} />,
+      separator: collections.length > 0,
+      onClick: () => setShowCreateCollectionModal(true),
+      closeOnClick: false,
+      disabled: isDeleting || Boolean(pendingCollectionId),
+    },
   ];
 
   const items: ContextMenuItemData[] = [

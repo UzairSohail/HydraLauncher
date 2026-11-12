@@ -28,8 +28,6 @@ interface LibraryFiltersMenuProps {
   hiddenCollectionId: string;
   onCollectionSelect: (collectionId: string | null) => void;
   onCollectionCreate: () => void;
-  /** Collections are stored in a Hydra account, so they need one. */
-  canCreateCollection: boolean;
   onCollectionContextMenu: (
     event: React.MouseEvent<HTMLElement>,
     collection: GameCollection
@@ -72,7 +70,6 @@ export function LibraryFiltersMenu({
   hiddenCollectionId,
   onCollectionSelect,
   onCollectionCreate,
-  canCreateCollection,
   onCollectionContextMenu,
   showSources,
   sources,
@@ -200,20 +197,18 @@ export function LibraryFiltersMenu({
             })}
           </DropdownMenuPrimitive.RadioGroup>
 
-          {canCreateCollection && (
-            <DropdownMenuPrimitive.Item
-              onSelect={(event) => {
-                event.preventDefault();
-                onCollectionCreate();
-              }}
-              className="library-toolbar-menu__item library-toolbar-menu__item--muted"
-            >
-              <PlusIcon size={16} />
-              <span className="library-toolbar-menu__item-label">
-                {t("create_collection", { ns: "sidebar" })}
-              </span>
-            </DropdownMenuPrimitive.Item>
-          )}
+          <DropdownMenuPrimitive.Item
+            onSelect={(event) => {
+              event.preventDefault();
+              onCollectionCreate();
+            }}
+            className="library-toolbar-menu__item library-toolbar-menu__item--muted"
+          >
+            <PlusIcon size={16} />
+            <span className="library-toolbar-menu__item-label">
+              {t("create_collection", { ns: "sidebar" })}
+            </span>
+          </DropdownMenuPrimitive.Item>
 
           {showSources && (
             <>

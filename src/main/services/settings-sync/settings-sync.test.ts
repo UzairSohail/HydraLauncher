@@ -167,6 +167,45 @@ describe("settings sync document", () => {
   });
 });
 
+describe("settings sync collections", () => {
+  it("brings in another device's collections and reads older documents", () => {
+    const key = generateSyncKey();
+    const remote = emptySettingsSyncState();
+    remote.gameCollections = {
+      rpg: {
+        value: {
+          name: "RPGs",
+          createdAt: 1,
+          ordered: true,
+          games: ["steam:2", "steam:1"],
+        },
+        updatedAt: 5,
+        deviceId: "laptop",
+      },
+    };
+
+    const roundTripped = fromSettingsDocument(
+      toSettingsDocument(remote, key, 5, "laptop"),
+      key
+    );
+    const result = mergeSettingsState(emptySettingsSyncState(), roundTripped);
+    assert.deepEqual(result.incoming.gameCollections, ["rpg"]);
+    assert.deepEqual(result.merged.gameCollections.rpg.value?.games, [
+      "steam:2",
+      "steam:1",
+    ]);
+
+    const { gameCollections: _omitted, ...older } = toSettingsDocument(
+      emptySettingsSyncState(),
+      key,
+      5,
+      "laptop"
+    );
+    void _omitted;
+    assert.deepEqual(fromSettingsDocument(older, key).gameCollections, {});
+  });
+});
+
 describe("settings sync errors", () => {
   it("names a build without Google sign-in details", () => {
     const error = new Error(
