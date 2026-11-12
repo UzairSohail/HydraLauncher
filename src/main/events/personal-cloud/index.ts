@@ -1,6 +1,7 @@
 import { dialog } from "electron";
 
 import { AchievementSync } from "@main/services/achievement-sync";
+import { CompanionLink } from "@main/services/companion";
 import { PersonalCloud } from "@main/services/personal-cloud";
 import { SettingsSync } from "@main/services/settings-sync";
 import { WindowManager } from "@main/services/window-manager";
@@ -15,6 +16,7 @@ registerEvent("signInPersonalCloud", async () => {
   if (status.signedIn) {
     void SettingsSync.syncNow();
     void AchievementSync.syncNow();
+    void CompanionLink.checkNow();
   }
   return status;
 });
@@ -107,3 +109,17 @@ registerEvent("syncAchievementsNow", async () => {
   await AchievementSync.syncNow();
   return AchievementSync.getStatus();
 });
+
+registerEvent("getCompanionLinkStatus", () => CompanionLink.getStatus());
+
+registerEvent(
+  "setCompanionLinkEnabled",
+  (_event: Electron.IpcMainInvokeEvent, enabled: boolean) =>
+    CompanionLink.setEnabled(enabled)
+);
+
+registerEvent(
+  "setCompanionDeviceName",
+  (_event: Electron.IpcMainInvokeEvent, name: string) =>
+    CompanionLink.setDeviceName(String(name ?? ""))
+);

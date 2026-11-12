@@ -153,6 +153,7 @@ import type {
   PersonalCloudVersion,
   SettingsSyncStatus,
   AchievementSyncStatus,
+  CompanionLinkStatus,
 } from "@types";
 import type { AxiosProgressEvent } from "axios";
 
@@ -317,6 +318,9 @@ declare global {
     onSettingsSyncStatus: (
       callback: (status: SettingsSyncStatus) => void
     ) => () => void;
+    getCompanionLinkStatus: () => Promise<CompanionLinkStatus>;
+    setCompanionLinkEnabled: (enabled: boolean) => Promise<CompanionLinkStatus>;
+    setCompanionDeviceName: (name: string) => Promise<CompanionLinkStatus>;
     getAchievementSyncStatus: () => Promise<AchievementSyncStatus>;
     syncAchievementsNow: () => Promise<AchievementSyncStatus>;
     onAchievementSyncStatus: (

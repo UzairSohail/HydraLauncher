@@ -3765,6 +3765,12 @@
     "settings_sync_reason_drive_refused": "Google Drive refused the request: {{detail}}",
     "settings_sync_reason_offline": "Can't reach Google Drive. Check your connection and try again.",
     "settings_sync_reason_bad_file": "The synced settings file in Google Drive is damaged ({{detail}}). Delete Cloud Save Manager/hydra/settings.json in Drive and sync again.",
-    "settings_sync_reason_unknown": "{{detail}}"
+    "settings_sync_reason_unknown": "{{detail}}",
+    "companion_title": "Phone app",
+    "companion_description": "The Nacho phone app can see this computer's library and queue downloads on it through your Google Drive. Queued games start the next time Nacho is open here.",
+    "companion_device_name": "Name shown in the phone app",
+    "companion_enabled": "Allow downloads from my phone on this computer",
+    "companion_on": "On",
+    "companion_off": "Off"
   }
 }

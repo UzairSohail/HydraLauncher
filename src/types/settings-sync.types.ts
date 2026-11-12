@@ -32,6 +32,17 @@ export interface SettingsSyncStatus {
 }
 
 /** Achievement sync through Google Drive, shown on game pages. */
+/** The link between this launcher and the Nacho phone app. */
+export interface CompanionLinkStatus {
+  /** Whether this computer downloads what the phone asks for. */
+  enabled: boolean;
+  signedIn: boolean;
+  deviceId: string;
+  deviceName: string;
+  lastCheckedAt: number | null;
+  lastError: string | null;
+}
+
 export interface AchievementSyncStatus {
   signedIn: boolean;
   syncing: boolean;
