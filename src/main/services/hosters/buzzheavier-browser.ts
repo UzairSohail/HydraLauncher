@@ -57,7 +57,8 @@ interface LinkResult {
  */
 export async function resolveBuzzheavierInBrowser(
   pageUrl: string,
-  id: string
+  id: string,
+  referrer?: string
 ): Promise<{ url: string | null; status: number }> {
   const browserSession = session.fromPartition(PARTITION);
   browserSession.setPermissionRequestHandler((_c, _p, callback) =>
@@ -88,7 +89,9 @@ export async function resolveBuzzheavierInBrowser(
 
   try {
     logger.log(`[Buzzheavier] Opening ${pageUrl} in the app browser`);
-    await window.loadURL(pageUrl).catch(() => undefined);
+    await window
+      .loadURL(pageUrl, referrer ? { httpReferrer: referrer } : undefined)
+      .catch(() => undefined);
 
     const started = Date.now();
     while (!closedByPerson) {

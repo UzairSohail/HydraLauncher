@@ -5,6 +5,17 @@ const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0";
 
 /**
+ * bzzhr.* are SteamRIP's short links to Buzzheavier: opened without coming
+ * from SteamRIP they bounce back to steamrip.com, so say we came from there,
+ * which is where the listing's link was published.
+ */
+const STEAMRIP_REFERER = "https://steamrip.com/";
+const isSteamRipShortLink = (origin: string) =>
+  /^https?:\/\/(www\.)?bzzhr\./i.test(origin);
+const refererFor = (origin: string, pageUrl: string) =>
+  isSteamRipShortLink(origin) ? STEAMRIP_REFERER : pageUrl;
+
+/**
  * Buzzheavier's download button is an htmx request: asking for
  * `/<id>/download` answers with an `hx-redirect` header that points at the file.
  */
@@ -31,7 +42,7 @@ export class BuzzheavierApi {
         redirect: "manual",
         headers: {
           "User-Agent": USER_AGENT,
-          Referer: pageUrl,
+          Referer: refererFor(origin, pageUrl),
           "hx-current-url": pageUrl,
           "hx-request": "true",
         },
@@ -96,7 +107,8 @@ export class BuzzheavierApi {
     try {
       const { url, status } = await resolveBuzzheavierInBrowser(
         `${origin}/${id}`,
-        id
+        id,
+        isSteamRipShortLink(origin) ? STEAMRIP_REFERER : undefined
       );
       if (status === 404)
         throw new Error(DownloadError.HosterUnlockFileNotFound);
