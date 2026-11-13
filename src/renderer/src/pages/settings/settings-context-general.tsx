@@ -72,7 +72,7 @@ const buildForm = (
   startMinimized: preferences?.startMinimized ?? false,
   hideToTrayOnGameStart: preferences?.hideToTrayOnGameStart ?? false,
   launchToLibraryPage: preferences?.launchToLibraryPage ?? false,
-  enableAutoInstall: preferences?.enableAutoInstall ?? false,
+  enableAutoInstall: preferences?.enableAutoInstall ?? true,
   useNativeWindowDecorations: preferences?.useNativeWindowDecorations ?? false,
   openFriendsWindowOnStartup: preferences?.openFriendsWindowOnStartup ?? false,
 });

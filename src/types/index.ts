@@ -182,7 +182,12 @@ export interface SteamGame {
 }
 
 export type AppUpdaterEvent =
-  | { type: "update-available"; info: { version: string } }
+  | {
+      type: "update-available";
+      info: { version: string };
+      /** Whether this install downloads and installs the update itself. */
+      autoInstall?: boolean;
+    }
   | { type: "download-progress"; percent: number }
   | { type: "update-downloaded" };
 

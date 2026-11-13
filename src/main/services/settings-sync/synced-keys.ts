@@ -9,7 +9,6 @@ import { SECRET_PREFERENCE_KEYS } from "../user-preferences/preference-secrets.j
 export const SYNCED_PREFERENCE_KEYS = [
   "language",
   "disableNsfwAlert",
-  "enableAutoInstall",
   "seedAfterDownloadComplete",
   "showHiddenAchievementsDescription",
   "showDownloadSpeedInMegabits",
