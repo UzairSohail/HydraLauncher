@@ -24,6 +24,7 @@ export class BuzzheavierApi {
     // one doesn't answer with a link, ask the main site.
     const origins = [...new Set([url.origin, "https://buzzheavier.com"])];
     let notFound = false;
+    let challengedOrigin: string | null = null;
     for (const origin of origins) {
       const pageUrl = `${origin}/${id}`;
       const response = await fetch(`${pageUrl}/download`, {
@@ -46,6 +47,12 @@ export class BuzzheavierApi {
         continue;
       }
 
+      if (response.status === 403) {
+        // Cloudflare's "Just a moment…" check; plain requests can't pass it.
+        challengedOrigin ??= origin;
+        continue;
+      }
+
       const hxRedirect = response.headers.get("hx-redirect");
       const location = response.headers.get("location");
       if (hxRedirect) return new URL(hxRedirect, origin).href;
@@ -64,10 +71,54 @@ export class BuzzheavierApi {
       );
     }
 
+    if (challengedOrigin && !notFound) {
+      const link = await this.resolveInBrowser(challengedOrigin, id);
+      if (link) return link;
+    }
+
     throw new Error(
       notFound
         ? DownloadError.HosterUnlockFileNotFound
         : DownloadError.HosterUnlockUnavailable
     );
+  }
+
+  /**
+   * Opens the page in the app's browser, showing it if Cloudflare wants the
+   * person to confirm they're human, then asks for the file link from there.
+   */
+  private static async resolveInBrowser(
+    origin: string,
+    id: string
+  ): Promise<string | null> {
+    const { resolveBuzzheavierInBrowser, BuzzheavierCheckCancelledError } =
+      await import("./buzzheavier-browser");
+    try {
+      const { url, status } = await resolveBuzzheavierInBrowser(
+        `${origin}/${id}`,
+        id
+      );
+      if (status === 404)
+        throw new Error(DownloadError.HosterUnlockFileNotFound);
+      if (!url) {
+        logger.warn(
+          `[Buzzheavier] No download link for ${id} in the app browser (status=${status})`
+        );
+        return null;
+      }
+      const next = new URL(url);
+      if (isBuzzheavierUri(next.href) && next.pathname.startsWith(`/${id}`)) {
+        return null;
+      }
+      return next.href;
+    } catch (error) {
+      if (error instanceof BuzzheavierCheckCancelledError) {
+        logger.log(
+          "[Buzzheavier] Cloudflare check window closed by the person"
+        );
+        return null;
+      }
+      throw error;
+    }
   }
 }
