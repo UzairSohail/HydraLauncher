@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  isRemovalRequest,
   parseCompanionDeviceDocument,
   parseCompanionDocument,
   resolveAnyClaim,
@@ -70,6 +71,30 @@ describe("companion files", () => {
       ["a"]
     );
     assert.deepEqual(document.devices, ["pc"]);
+  });
+
+  it("reads uninstall and removal requests, only for a chosen computer", () => {
+    const base = { target: "pc", shop: "steam", objectId: "1", title: "Game" };
+    const document = parseCompanionDocument(
+      JSON.stringify({
+        version: 1,
+        requests: [
+          { ...base, id: "u", action: "uninstall" },
+          { ...base, id: "r", action: "remove" },
+          { ...base, id: "any", target: "any", action: "uninstall" },
+          { ...base, id: "odd", action: "format-disk", repack },
+          { ...base, id: "d", action: "download", repack },
+          { ...base, id: "old", repack },
+        ],
+      })
+    );
+    assert.deepEqual(
+      document.requests.map((request) => request.id),
+      ["u", "r", "d", "old"]
+    );
+    assert.equal(isRemovalRequest(document.requests[0]), true);
+    assert.equal(isRemovalRequest(document.requests[1]), true);
+    assert.equal(isRemovalRequest(document.requests[3]), false);
   });
 
   it("reads a device file with defaults", () => {

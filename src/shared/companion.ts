@@ -3,7 +3,8 @@
  * Kept free of imports so the phone app can use this file as it is.
  *
  * Each file has exactly one writer, so nobody overwrites anybody:
- * - `hydra/companion.json`: written by the phone. The download requests.
+ * - `hydra/companion.json`: written by the phone. The requests: downloads,
+ *   uninstalls and removals from the library.
  * - `hydra/devices/<deviceId>.json`: written by that launcher. Its name, free
  *   space, a short library list and what it did with each request.
  *
@@ -34,16 +35,42 @@ export interface CompanionRepack {
   createdAt: string;
 }
 
-export interface CompanionRequest {
+/**
+ * What a request asks a launcher to do. Requests from before uninstalls
+ * existed have no action and are downloads.
+ * - `uninstall`: delete the game's files, keep it in the library.
+ * - `remove`: delete the game's files, if any, and remove it from the library.
+ * Neither touches cloud saves in Drive.
+ */
+export type CompanionAction = "download" | "uninstall" | "remove";
+
+interface CompanionRequestBase {
   id: string;
   createdAt: number;
-  /** A device id, or `ANY_DEVICE`. */
+  /** A device id, or `ANY_DEVICE` (downloads only). */
   target: string;
   shop: CompanionShop;
   objectId: string;
   title: string;
+}
+
+export interface CompanionDownloadRequest extends CompanionRequestBase {
+  action?: "download";
   repack: CompanionRepack;
 }
+
+export interface CompanionRemovalRequest extends CompanionRequestBase {
+  action: "uninstall" | "remove";
+}
+
+export type CompanionRequest =
+  | CompanionDownloadRequest
+  | CompanionRemovalRequest;
+
+export const isRemovalRequest = (
+  request: CompanionRequest
+): request is CompanionRemovalRequest =>
+  request.action === "uninstall" || request.action === "remove";
 
 /** Written by the phone. */
 export interface CompanionDocument {
@@ -62,6 +89,8 @@ export type CompanionRequestState =
   | "failed"
   /** The download was cancelled on the computer. */
   | "cancelled"
+  /** An uninstall or removal is being carried out. */
+  | "removing"
   /** An "any" request another launcher took first. */
   | "skipped";
 
@@ -155,17 +184,23 @@ const parseRequest = (value: unknown): CompanionRequest | null => {
   ) {
     return null;
   }
-  const repack = parseRepack(value.repack);
-  if (!repack) return null;
-  return {
+  const base = {
     id,
     target,
     shop,
     objectId,
     title,
     createdAt: typeof createdAt === "number" ? createdAt : 0,
-    repack,
   };
+  if (value.action === "uninstall" || value.action === "remove") {
+    // Never "whichever computer opens first": deleting needs a chosen computer.
+    if (target === ANY_DEVICE) return null;
+    return { ...base, action: value.action };
+  }
+  if (value.action !== undefined && value.action !== "download") return null;
+  const repack = parseRepack(value.repack);
+  if (!repack) return null;
+  return { ...base, repack };
 };
 
 /** Reads the phone's file, dropping any request it can't make sense of. */
