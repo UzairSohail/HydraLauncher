@@ -4,8 +4,6 @@ import { logger } from "../logger";
 
 /** Kept between runs so a passed Cloudflare check is remembered. */
 const PARTITION = "persist:buzzheavier";
-/** How long Cloudflare gets to clear on its own before the window is shown. */
-const SHOW_AFTER_MS = 5_000;
 /** How long the person has to get through the check. */
 const CHECK_TIMEOUT_MS = 3 * 60_000;
 const POLL_MS = 1_000;
@@ -26,7 +24,12 @@ const READ_CHALLENGE_STATE = `(() => {
 const readDownloadLink = (id: string) => `(async () => {
   const controller = new AbortController();
   try {
-    const response = await fetch("/" + ${JSON.stringify(encodeURIComponent(id))} + "/download", {
+    // The button's URL carries a one-time token (?t=...); without it the
+    // site just points back at the page.
+    const button = document.querySelector("a.download-btn[hx-get], [hx-get*='/download']");
+    const target = button?.getAttribute("hx-get")
+      || "/" + ${JSON.stringify(encodeURIComponent(id))} + "/download";
+    const response = await fetch(target, {
       headers: { "hx-request": "true", "hx-current-url": location.href },
       signal: controller.signal,
     });
@@ -89,34 +92,52 @@ export async function resolveBuzzheavierInBrowser(
 
   try {
     logger.log(`[Buzzheavier] Opening ${pageUrl} in the app browser`);
+    // A hidden window is throttled by Chromium, which can stall Cloudflare's
+    // JS check; show it from the start so the check runs and the person can
+    // act on it if it needs them.
+    window.show();
+    window.focus();
     await window
       .loadURL(pageUrl, referrer ? { httpReferrer: referrer } : undefined)
       .catch(() => undefined);
 
     const started = Date.now();
+    let firstLink: LinkResult | null = null;
+    let loggedChallenge = false;
     while (!closedByPerson) {
       const challenged = await window.webContents
         .executeJavaScript(READ_CHALLENGE_STATE)
         .catch(() => true);
-      if (!challenged) break;
+
+      if (challenged && !loggedChallenge) {
+        loggedChallenge = true;
+        logger.log(
+          `[Buzzheavier] Waiting for the Cloudflare check (${window.webContents.getURL()})`
+        );
+      }
+
+      if (!challenged) {
+        // The page looks clear; try to read the link. If it still answers 403
+        // the check hasn't really cleared, so keep waiting.
+        firstLink = (await window.webContents
+          .executeJavaScript(readDownloadLink(id))
+          .catch(() => null)) as LinkResult | null;
+        logger.log(
+          `[Buzzheavier] Link request from ${window.webContents.getURL()}: status=${firstLink?.status} link=${Boolean(firstLink?.hxRedirect ?? firstLink?.redirectedTo)}`
+        );
+        if (firstLink && firstLink.status !== 403) break;
+      }
 
       const waited = Date.now() - started;
       if (waited > CHECK_TIMEOUT_MS) {
         logger.warn("[Buzzheavier] Cloudflare check not passed in time");
         return { url: null, status: 403 };
       }
-      if (waited > SHOW_AFTER_MS && !window.isVisible()) {
-        logger.log("[Buzzheavier] Showing the Cloudflare check to the person");
-        window.show();
-        window.focus();
-      }
       await sleep(POLL_MS);
     }
 
     if (closedByPerson) throw new BuzzheavierCheckCancelledError();
-    const result = (await window.webContents
-      .executeJavaScript(readDownloadLink(id))
-      .catch(() => null)) as LinkResult | null;
+    const result = firstLink;
     if (!result) return { url: null, status: 0 };
 
     const base = window.webContents.getURL() || pageUrl;
