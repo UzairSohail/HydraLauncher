@@ -28,8 +28,9 @@ import {
 } from "./modals";
 import {
   Downloader,
-  getDownloadersForUri,
+  DownloadError,
   getRepackUriParts,
+  rankUrisForDownloader,
   toInstalledRepackInfo,
 } from "@shared";
 import { CloudSyncFilesModal } from "./cloud-sync-files-modal/cloud-sync-files-modal";
@@ -83,9 +84,6 @@ export default function GameDetails() {
     }
   };
 
-  const selectRepackUri = (repack: GameRepack, downloader: Downloader) =>
-    repack.uris.find((uri) => getDownloadersForUri(uri).includes(downloader))!;
-
   return (
     <GameDetailsContextProvider
       gameTitle={gameTitle!}
@@ -123,8 +121,7 @@ export default function GameDetails() {
             automaticallyDeleteArchiveFiles = false,
             signal?: AbortSignal
           ) => {
-            const uri = selectRepackUri(repack, downloader);
-            const payload = {
+            const buildPayload = (uri: string) => ({
               objectId: downloadGame?.objectId ?? game?.objectId ?? objectId!,
               title: gameTitle,
               downloader,
@@ -139,11 +136,28 @@ export default function GameDetails() {
               selectedFilesSize,
               repack: toInstalledRepackInfo(repack, uri),
               replaceInstalledVersion,
-            };
+            });
 
-            const response = addToQueueOnly
-              ? await addGameToQueue(payload, signal)
-              : await startDownload(payload, signal);
+            // Debrid can reject a host; move on to the listing's next link
+            // it could take before giving up.
+            const uris = rankUrisForDownloader(repack, downloader);
+            let response: Awaited<ReturnType<typeof startDownload>> = {
+              ok: false,
+              error: DownloadError.DebridHostNotSupported,
+            };
+            for (const uri of uris) {
+              const payload = buildPayload(uri);
+              response = addToQueueOnly
+                ? await addGameToQueue(payload, signal)
+                : await startDownload(payload, signal);
+              if (
+                response.ok ||
+                response.error !== DownloadError.DebridHostNotSupported ||
+                signal?.aborted
+              ) {
+                break;
+              }
+            }
 
             if (response.ok) {
               await updateGame();

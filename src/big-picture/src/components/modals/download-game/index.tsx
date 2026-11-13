@@ -19,6 +19,8 @@ import {
   getRepackUriParts,
   isEpicMemberInCurrentScope,
   pickDefaultDownloader,
+  rankUrisForDownloader,
+  DownloadError,
 } from "@shared";
 import { DOWNLOADER_NAME, IS_DESKTOP } from "../../../constants";
 import useEmblaCarousel from "embla-carousel-react";
@@ -1662,18 +1664,27 @@ function DownloadGameOptions({
       return;
     }
 
-    const payload = {
+    const buildPayload = (uri: string) => ({
       objectId: game.objectId,
       title: game.title,
       shop: game.shop,
-      uri: selectedUri,
-      parts: getRepackUriParts(option, selectedUri),
+      uri,
+      parts: getRepackUriParts(option, uri),
       downloadPath: selectedDownloadPath,
       downloader: resolvedDownloader,
       automaticallyExtract: automaticExtractionEnabled,
       automaticallyDeleteArchiveFiles: deleteArchiveFilesAfterExtraction,
       fileSize: option.fileSize,
-    } as const;
+    });
+
+    // Debrid can reject a host; move on to the listing's next link it could
+    // take before giving up.
+    const uris = [
+      selectedUri,
+      ...rankUrisForDownloader(option, resolvedDownloader).filter(
+        (uri) => uri !== selectedUri
+      ),
+    ];
 
     setIsSubmitting(true);
     let shouldQueue = hasActiveDownload;
@@ -1683,9 +1694,21 @@ function DownloadGameOptions({
         globalThis.window.electron.getLibrary
       );
 
-      const response = shouldQueue
-        ? await globalThis.window.electron.addGameToQueue(payload)
-        : await globalThis.window.electron.startGameDownload(payload);
+      let response: Awaited<
+        ReturnType<typeof globalThis.window.electron.startGameDownload>
+      > = { ok: false };
+      for (const uri of uris) {
+        const payload = buildPayload(uri);
+        response = shouldQueue
+          ? await globalThis.window.electron.addGameToQueue(payload)
+          : await globalThis.window.electron.startGameDownload(payload);
+        if (
+          response.ok ||
+          response.error !== DownloadError.DebridHostNotSupported
+        ) {
+          break;
+        }
+      }
 
       if (response.ok) {
         onClose();
