@@ -49,8 +49,39 @@ export const requestStatus = (
   };
 };
 
-export const describeState = (view: RequestView, targetName: string) => {
+const describeRemoval = (
+  view: RequestView,
+  targetName: string,
+  action: "uninstall" | "remove"
+) => {
+  const doing = action === "uninstall" ? "Uninstall" : "Removal from library";
   switch (view.state) {
+    case "done":
+      return action === "uninstall"
+        ? `Uninstalled from ${targetName}`
+        : `Removed from the library on ${targetName}`;
+    case "failed":
+      return view.error ? `Skipped: ${view.error}` : "Skipped";
+    case "removing":
+      return action === "uninstall"
+        ? `Uninstalling on ${targetName}`
+        : `Removing on ${targetName}`;
+    default:
+      return `${doing} happens when Nacho Launcher opens on ${targetName}`;
+  }
+};
+
+export const describeState = (
+  view: RequestView,
+  targetName: string,
+  request?: Pick<CompanionRequest, "action">
+) => {
+  if (request?.action === "uninstall" || request?.action === "remove") {
+    return describeRemoval(view, targetName, request.action);
+  }
+  switch (view.state) {
+    case "removing":
+      return `Removing on ${targetName}`;
     case "waiting":
       return `Starts when Nacho Launcher opens on ${targetName}`;
     case "claimed":

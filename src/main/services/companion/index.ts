@@ -25,13 +25,16 @@ import {
   getDownloadersForUri,
   getRepackUriParts,
   isFinishedRequestState,
+  isRemovalRequest,
   parseCompanionDeviceDocument,
   parseCompanionDocument,
   resolveAnyClaim,
   toInstalledRepackInfo,
   type CompanionDeviceDocument,
   type CompanionDocument,
+  type CompanionDownloadRequest,
   type CompanionLibraryGame,
+  type CompanionRemovalRequest,
   type CompanionRequest,
   type CompanionRequestStatus,
 } from "@shared";
@@ -41,6 +44,7 @@ import { PersonalCloud } from "../personal-cloud";
 import { WindowManager } from "../window-manager";
 import { getUserPreferences } from "../user-preferences";
 import { DownloadManager } from "../download";
+import { isGameRunning } from "../game-running-state";
 import { rankCompanionDownloads } from "./pick-download";
 
 /** How often an open launcher looks for new requests from the phone. */
@@ -51,13 +55,33 @@ const CLAIM_SETTLE_MS = 30_000;
 const HEARTBEAT_MS = 15 * 60_000;
 const FIRST_CHECK_DELAY_MS = 20_000;
 
+type LocalRequestStatus = CompanionRequestStatus & {
+  gameKey: string;
+  /** Set for uninstalls and removals, which have no download to follow. */
+  removal?: true;
+};
+
+/**
+ * Cloud save results that mean the saves in Drive are current, or that there
+ * are no saves the save catalogue knows of. Anything else stops an uninstall.
+ */
+const SAVES_SAFE_OUTCOMES = new Set([
+  "up_to_date",
+  "pushed",
+  "pulled",
+  "not_in_catalogue",
+  "learning",
+]);
+
+const DOWNLOADING_STATUSES = new Set(["active", "waiting", "paused"]);
+
 interface LocalCompanionRecord {
   deviceId: string;
   /** Null shows the computer's own name. */
   deviceName: string | null;
   enabled: boolean;
   /** What this launcher did with each request, as last written to Drive. */
-  requests: Record<string, CompanionRequestStatus & { gameKey: string }>;
+  requests: Record<string, LocalRequestStatus>;
   lastPublished: string | null;
   lastPublishedAt: number;
   lastCheckedAt: number | null;
@@ -240,10 +264,7 @@ export class CompanionLink {
     );
   }
 
-  private static async setRequest(
-    id: string,
-    status: CompanionRequestStatus & { gameKey: string }
-  ) {
+  private static async setRequest(id: string, status: LocalRequestStatus) {
     const record = await this.load();
     await this.save({
       ...record,
@@ -255,6 +276,11 @@ export class CompanionLink {
     request: CompanionRequest,
     companion: CompanionDocument
   ) {
+    if (isRemovalRequest(request)) {
+      await this.takeRemoval(request);
+      return;
+    }
+
     const record = await this.load();
     const gameKey = levelKeys.game(request.shop as GameShop, request.objectId);
 
@@ -319,7 +345,134 @@ export class CompanionLink {
     }
   }
 
-  private static async startDownload(request: CompanionRequest) {
+  /**
+   * Uninstalls a game, or removes it from the library, as the phone asked.
+   * Skipped while the game is running or downloading. Cloud saves in Drive
+   * are never touched, and are brought up to date before any files go.
+   */
+  private static async takeRemoval(request: CompanionRemovalRequest) {
+    const gameKey = levelKeys.game(request.shop as GameShop, request.objectId);
+    const verb =
+      request.action === "uninstall" ? "Uninstalled" : "Removed from library";
+    await this.setRequest(request.id, {
+      state: "removing",
+      at: Date.now(),
+      gameKey,
+      removal: true,
+    });
+    await this.publish(true).catch(() => undefined);
+
+    try {
+      await this.removeGame(request);
+      await this.setRequest(request.id, {
+        state: "done",
+        at: Date.now(),
+        gameKey,
+        removal: true,
+      });
+      logger.log(`[Companion] ${verb} ${request.title} from the phone`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(
+        `[Companion] Could not ${request.action} ${request.title}`,
+        error
+      );
+      await this.setRequest(request.id, {
+        state: "failed",
+        at: Date.now(),
+        error: message,
+        gameKey,
+        removal: true,
+      });
+    } finally {
+      WindowManager.sendToAppWindows("on-library-batch-complete");
+    }
+  }
+
+  private static async removeGame(request: CompanionRemovalRequest) {
+    const shop = request.shop as GameShop;
+    const { objectId } = request;
+    const gameKey = levelKeys.game(shop, objectId);
+    const [game, download] = await Promise.all([
+      gamesSublevel.get(gameKey).catch(() => undefined),
+      downloadsSublevel.get(gameKey).catch(() => undefined),
+    ]);
+
+    if (!game || game.isDeleted) {
+      // Nothing to do for a removal; an uninstall has nothing to uninstall.
+      if (request.action === "remove") return;
+      throw new Error("This game isn't in the library on this computer");
+    }
+    if (isGameRunning(objectId, shop)) {
+      throw new Error("The game is running on this computer");
+    }
+    if (download && DOWNLOADING_STATUSES.has(download.status ?? "")) {
+      throw new Error(
+        "The game is downloading on this computer. Cancel the download there first"
+      );
+    }
+    if (download?.extracting || download?.status === "extracting") {
+      throw new Error("The game is being extracted on this computer");
+    }
+
+    const hasFiles = Boolean(
+      download && download.status !== "removed" && download.folderName
+    );
+    if (request.action === "uninstall" && !hasFiles) {
+      throw new Error(
+        game.executablePath
+          ? "Nacho Launcher didn't download this game, so it won't delete its files"
+          : "This game isn't installed on this computer"
+      );
+    }
+
+    if (hasFiles) {
+      await this.backUpSaves(shop, objectId);
+      if (download?.status === "seeding") {
+        await DownloadManager.cancelDownload(gameKey);
+      }
+      // Imported here: the event modules import the services barrel.
+      const { deleteGameFiles } = await import(
+        "../../events/library/delete-game-folder"
+      );
+      await deleteGameFiles(shop, objectId).catch((error: unknown) => {
+        // It rejects without a reason when a file can't be deleted.
+        throw error instanceof Error
+          ? error
+          : new Error("Some of the game's files couldn't be deleted");
+      });
+    }
+
+    if (request.action === "remove") {
+      const { removeLibraryGame } = await import(
+        "../../helpers/remove-library-game"
+      );
+      await removeLibraryGame(shop, objectId);
+    }
+  }
+
+  /**
+   * Syncs the game's cloud saves before its files go, since some games keep
+   * their saves next to the game. Stops the uninstall if that can't be done.
+   */
+  private static async backUpSaves(shop: GameShop, objectId: string) {
+    let outcome: string;
+    try {
+      outcome = (await PersonalCloud.syncNow(shop, objectId)).outcome;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // No executable picked, so there are no saves Nacho Launcher tracks.
+      if (message === "Choose the game's executable first") return;
+      throw new Error(`Couldn't back up the cloud saves first: ${message}`);
+    }
+    if (!SAVES_SAFE_OUTCOMES.has(outcome)) {
+      throw new Error(
+        `Couldn't back up the cloud saves first (${outcome.replaceAll("_", " ")}). Nothing was deleted`
+      );
+    }
+  }
+
+  private static async startDownload(request: CompanionDownloadRequest) {
     const preferences = await getUserPreferences();
     const options = rankCompanionDownloads(
       request.repack,
@@ -424,6 +577,17 @@ export class CompanionLink {
     for (const [id, status] of Object.entries(requests)) {
       if (isFinishedRequestState(status.state) || status.state === "claimed")
         continue;
+      if (status.removal) {
+        // Still "removing" here means the launcher closed part way through.
+        requests[id] = {
+          ...status,
+          state: "failed",
+          at: Date.now(),
+          error: "Nacho Launcher closed before it finished. Try again",
+        };
+        changed = true;
+        continue;
+      }
       const download = await downloadsSublevel
         .get(status.gameKey)
         .catch(() => undefined);
@@ -498,7 +662,7 @@ export class CompanionLink {
       library,
       requests: Object.fromEntries(
         Object.entries(record.requests).map(
-          ([id, { gameKey: _, ...status }]) => [id, status]
+          ([id, { gameKey: _, removal: __, ...status }]) => [id, status]
         )
       ),
     };

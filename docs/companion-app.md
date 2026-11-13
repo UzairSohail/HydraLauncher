@@ -8,6 +8,8 @@ Google Drive. From your phone you can:
 - queue a download on a chosen computer, or on whichever computer opens Nacho Launcher
   first, from the download option you pick,
 - follow queued downloads,
+- uninstall a game from a chosen computer, or remove it from that computer's
+  library,
 - add and remove download sources for all your computers.
 
 There's no server. The phone and every launcher read and write small files in
@@ -33,6 +35,16 @@ picks the download the same way the download dialog would: your preferred
 debrid service (AllDebrid first) when one is set up, otherwise a direct
 download. Torrents are only ever downloaded through debrid. If something else is
 downloading, the game is added to the queue.
+
+Uninstalls and removals from the library always name one computer. They're
+in the same `hydra/companion.json` file, with `action` set to `uninstall`
+(delete the game's files, keep it in the library) or `remove` (delete the
+files if there are any, and remove it from the library). The launcher skips
+one, and reports why on the phone, when the game is running, downloading or
+being extracted. Before deleting any files it syncs the game's cloud saves and
+stops if that doesn't work, since some games keep saves next to the game.
+Cloud saves in Drive are never deleted. It only deletes files Nacho Launcher
+downloaded itself. Launchers from before this feature ignore these requests.
 
 For "first computer to open Nacho Launcher" requests, a launcher writes a claim in its
 own file, waits 30 seconds, and goes ahead only if no other computer claimed it

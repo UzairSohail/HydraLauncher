@@ -5,7 +5,8 @@ import {
   parseCompanionDocument,
   type CompanionDeviceDocument,
   type CompanionDocument,
-  type CompanionRequest,
+  type CompanionDownloadRequest,
+  type CompanionRemovalRequest,
 } from "../../../src/shared/companion";
 import { listFiles, readFile, readFileById, trashFile, writeFile } from "./drive";
 
@@ -64,7 +65,7 @@ const newId = () =>
   `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
 export const queueDownload = (
-  request: Omit<CompanionRequest, "id" | "createdAt">,
+  request: Omit<CompanionDownloadRequest, "id" | "createdAt">,
   deviceIds: string[]
 ) =>
   updateCompanion(
@@ -72,6 +73,33 @@ export const queueDownload = (
       ...document,
       requests: [
         ...document.requests,
+        { ...request, id: newId(), createdAt: Date.now() },
+      ],
+    }),
+    deviceIds
+  );
+
+/**
+ * Asks one computer to uninstall a game or remove it from its library. An
+ * earlier unfinished request for the same game on that computer is replaced.
+ */
+export const queueRemoval = (
+  request: Omit<CompanionRemovalRequest, "id" | "createdAt">,
+  deviceIds: string[]
+) =>
+  updateCompanion(
+    (document) => ({
+      ...document,
+      requests: [
+        ...document.requests.filter(
+          (existing) =>
+            !(
+              (existing.action === "uninstall" || existing.action === "remove") &&
+              existing.target === request.target &&
+              existing.shop === request.shop &&
+              existing.objectId === request.objectId
+            )
+        ),
         { ...request, id: newId(), createdAt: Date.now() },
       ],
     }),

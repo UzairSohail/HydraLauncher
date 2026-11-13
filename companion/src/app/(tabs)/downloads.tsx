@@ -9,7 +9,10 @@ import {
   Screen,
   styles,
 } from "../../components/ui";
-import { ANY_DEVICE } from "../../../../src/shared/companion";
+import {
+  ANY_DEVICE,
+  isRemovalRequest,
+} from "../../../../src/shared/companion";
 import { removeRequests } from "../../lib/link";
 import { useLink } from "../../lib/link-context";
 import {
@@ -111,7 +114,11 @@ export default function DownloadsScreen() {
                 {request.title}
               </Text>
               <Text style={styles.small} numberOfLines={1}>
-                {request.repack.downloadSourceName} · {request.repack.title}
+                {isRemovalRequest(request)
+                  ? request.action === "uninstall"
+                    ? "Uninstall · cloud saves are kept"
+                    : "Remove from library · cloud saves are kept"
+                  : `${request.repack.downloadSourceName} · ${request.repack.title}`}
               </Text>
               <Text
                 style={[
@@ -120,7 +127,7 @@ export default function DownloadsScreen() {
                   view.state === "done" && { color: colors.success },
                 ]}
               >
-                {describeState(view, target)}
+                {describeState(view, target, request)}
                 {progress !== null && progress > 0 ? ` · ${progress}%` : ""}
               </Text>
               {progress !== null && (
@@ -146,7 +153,12 @@ export default function DownloadsScreen() {
                 kind={finishedRow ? "secondary" : "danger"}
                 disabled={busy}
                 onPress={() =>
-                  confirmRemove(request.id, !finishedRow && view.state !== "waiting")
+                  confirmRemove(
+                    request.id,
+                    !finishedRow &&
+                      view.state !== "waiting" &&
+                      !isRemovalRequest(request)
+                  )
                 }
                 style={{ marginTop: 6, minHeight: 40 }}
               />
