@@ -137,7 +137,9 @@ linux:
   mimeTypes:
     - x-scheme-handler/hydralauncher
 appImage:
-  artifactName: nacho-launcher-${version}.${ext}
+  # No version in the name, so auto-updates replace the file in place and
+  # Steam shortcuts pointing at it keep working.
+  artifactName: nacho-launcher.${ext}
 npmRebuild: false
 publish:
   provider: github
