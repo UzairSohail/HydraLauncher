@@ -7,9 +7,15 @@ name: Release
 # its tag and any leftover workflow artifacts are deleted, so the Releases
 # page only ever holds the latest version. Pull requests do not build.
 
-# Runs only when started by hand (Actions > Release > Run workflow), so merges
-# don't spend the account's Actions minutes.
+# Runs on every push to master (the repo is public, so Actions minutes are
+# free) and can still be started by hand (Actions > Release > Run workflow).
+# Docs-only changes don't trigger a build.
 on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   workflow_dispatch:
 
 concurrency:
