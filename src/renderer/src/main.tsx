@@ -13,6 +13,11 @@ import "@fontsource/noto-sans/700.css";
 import "react-loading-skeleton/dist/skeleton.css";
 import "react-tooltip/dist/react-tooltip.css";
 
+// Global styles (full-height html/body/#root, box-sizing, scrollbars) for
+// every window. The desktop App is lazy-loaded, so without this Big Picture
+// and the small windows lost them and Big Picture's page area collapsed.
+import "./app.scss";
+
 import { CollectionContextMenuProvider } from "@renderer/context";
 import { GameOptionsModalProvider } from "@renderer/context/game-options-modal/game-options-modal.context";
 
