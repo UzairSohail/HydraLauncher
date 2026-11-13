@@ -12,7 +12,6 @@ import { runAchievementMetadataExport } from "@main/services/achievements/metada
 import { db, downloadsSublevel, gamesSublevel, levelKeys } from "@main/level";
 import {
   Downloader,
-  FILE_EXTENSIONS_TO_EXTRACT,
   getNextClassicsDiscLabel,
   removeSymbolsFromName,
 } from "@shared";
@@ -40,6 +39,11 @@ import * as emulators from "./emulators";
 import * as retroarch from "./retroarch";
 import { getPathType } from "./extraction-path";
 import { listArchiveFiles } from "./archive-entry";
+import {
+  isArchiveVolumeFile,
+  isFirstArchiveVolume,
+  isNumberedSplitVolume,
+} from "./archive-volume-files";
 import { GameExecutables } from "./game-executables";
 import { logger } from "./logger";
 import { platformToRetroArchPlatform, platformToSystem } from "@main/helpers";
@@ -363,7 +367,7 @@ export class GameFilesManager {
           {
             filePath,
             outputPath: path.dirname(filePath),
-            inPlace,
+            inPlace: inPlace && !isNumberedSplitVolume(file),
             resume: startedInPlace.has(filePath),
             recordInPlaceStart: () => this.recordInPlaceStart(filePath),
             forgetInPlaceStart: () => this.forgetInPlaceStart(filePath),
@@ -463,8 +467,6 @@ export class GameFilesManager {
     const compressedFiles = new Set<string>();
     const extractedFiles = new Set<string>();
     const download = await downloadsSublevel.get(this.gameKey);
-    // Only multi-part hoster downloads, which need the feature to start, number their first volume part01.
-    const firstRarVolume = download?.parts ? /part0*1\.rar$/i : /part1\.rar$/i;
     // Archives nested in an outer one are kept, so only top-level downloads
     // that will be deleted anyway are consumed while extracting.
     const inPlace =
@@ -481,10 +483,7 @@ export class GameFilesManager {
     for (let pass = 0; pass < MAX_ARCHIVE_EXTRACTION_PASSES; pass++) {
       let archives: string[];
       try {
-        archives = await listArchiveFiles(
-          directoryPath,
-          FILE_EXTENSIONS_TO_EXTRACT
-        );
+        archives = await listArchiveFiles(directoryPath, isArchiveVolumeFile);
       } catch (error) {
         await this.setExtractionFailedState(error, directoryPath);
         return false;
@@ -493,9 +492,7 @@ export class GameFilesManager {
       archives = [...new Set([...archives, ...unlistedInPlace])];
       archives.forEach((file) => compressedFiles.add(file));
       const filesToExtract = archives.filter(
-        (file) =>
-          !extractedFiles.has(file) &&
-          (firstRarVolume.test(file) || !/part\d+\.rar$/i.test(file))
+        (file) => !extractedFiles.has(file) && isFirstArchiveVolume(file)
       );
 
       if (filesToExtract.length === 0) continue;
