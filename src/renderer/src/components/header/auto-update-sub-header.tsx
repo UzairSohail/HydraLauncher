@@ -24,6 +24,9 @@ export function AutoUpdateSubHeader() {
       (event: AppUpdaterEvent) => {
         if (event.type == "update-available") {
           setNewVersion(event.info.version);
+          if (event.autoInstall !== undefined) {
+            setIsAutoInstallAvailable(event.autoInstall);
+          }
         }
 
         if (event.type == "update-downloaded") {

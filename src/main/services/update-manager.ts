@@ -22,8 +22,11 @@ export class UpdateManager {
     this.sendEvent({ type: "update-downloaded" });
   }
 
+  private static isAutoInstall = false;
+
   private static sendEvent(event: AppUpdaterEvent) {
-    WindowManager.mainWindow?.webContents.send("autoUpdaterEvent", event);
+    // Big Picture is its own window, so it needs the events too.
+    WindowManager.sendToAppWindows("autoUpdaterEvent", event);
   }
 
   private static async isAutoInstallEnabled() {
@@ -33,6 +36,9 @@ export class UpdateManager {
     }
 
     if (process.platform === "linux") {
+      // Only an AppImage can replace itself; deb, rpm and snap installs can't.
+      if (!process.env.APPIMAGE) return false;
+
       const userPreferences = await db.get<string, UserPreferences | null>(
         levelKeys.userPreferences,
         {
@@ -40,7 +46,8 @@ export class UpdateManager {
         }
       );
 
-      return userPreferences?.enableAutoInstall === true;
+      // On unless turned off, so an AppImage keeps itself up to date.
+      return userPreferences?.enableAutoInstall !== false;
     }
 
     return false;
@@ -53,7 +60,11 @@ export class UpdateManager {
         logger.error("Auto updater error", error);
       })
       .on("update-available", (info: UpdateInfo) => {
-        this.sendEvent({ type: "update-available", info });
+        this.sendEvent({
+          type: "update-available",
+          info,
+          autoInstall: this.isAutoInstall,
+        });
         this.newVersion = info.version;
       })
       .on("download-progress", (progress: { percent: number }) => {
@@ -77,6 +88,7 @@ export class UpdateManager {
     this.registerListeners();
 
     const isAutoInstallAvailable = await this.isAutoInstallEnabled();
+    this.isAutoInstall = isAutoInstallAvailable;
 
     if (app.isPackaged) {
       autoUpdater.autoDownload = isAutoInstallAvailable;
@@ -105,6 +117,7 @@ export class UpdateManager {
     this.registerListeners();
 
     const isAutoInstallAvailable = await this.isAutoInstallEnabled();
+    this.isAutoInstall = isAutoInstallAvailable;
     autoUpdater.autoDownload = isAutoInstallAvailable;
 
     try {

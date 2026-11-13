@@ -161,6 +161,52 @@ export default function App() {
     };
   }, [showErrorToast, showSuccessToast, showWarningToast, t]);
 
+  // Big Picture has no header banner, so updates are shown as toasts.
+  useEffect(() => {
+    if (!IS_DESKTOP) return;
+
+    let newVersion = "";
+
+    return globalThis.window.electron.onAutoUpdaterEvent((event) => {
+      if (event.type === "update-available") {
+        newVersion = event.info.version;
+
+        if (event.autoInstall === false) {
+          showWarningToast(
+            t("update_toast_available_title", {
+              ns: "header",
+              version: newVersion,
+            }),
+            {
+              message: t("update_toast_available_description", {
+                ns: "header",
+              }),
+              fallbackVisual: "settings",
+              duration: 10000,
+            }
+          );
+        }
+        return;
+      }
+
+      if (event.type === "update-downloaded") {
+        showSuccessToast(
+          t("update_toast_ready_title", { ns: "header", version: newVersion }),
+          {
+            message: t("update_toast_ready_description", { ns: "header" }),
+            fallbackVisual: "settings",
+            duration: 10000,
+            action: {
+              label: t("update_toast_restart", { ns: "header" }),
+              onClick: () =>
+                globalThis.window.electron.restartAndInstallUpdate(),
+            },
+          }
+        );
+      }
+    });
+  }, [showSuccessToast, showWarningToast, t]);
+
   useEffect(() => {
     setPendingRouteFocusPathname(pathname);
   }, [pathname]);

@@ -53,7 +53,7 @@ const buildForm = (preferences: UserPreferences | null): BehaviorForm =>
         startMinimized: preferences.startMinimized ?? false,
         hideToTrayOnGameStart: preferences.hideToTrayOnGameStart ?? false,
         launchToLibraryPage: preferences.launchToLibraryPage ?? false,
-        enableAutoInstall: preferences.enableAutoInstall ?? false,
+        enableAutoInstall: preferences.enableAutoInstall ?? true,
       }
     : DEFAULT_FORM;
 
