@@ -11,7 +11,6 @@ export const MULTIPART_DOWNLOADERS: ReadonlySet<Downloader> = new Set([
   Downloader.Rootz,
   Downloader.FileKeeper,
   Downloader.Buzzheavier,
-  Downloader.FileDitch,
   Downloader.MegaDB,
 ]);
 

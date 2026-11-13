@@ -16,7 +16,8 @@ export enum Downloader {
   Epic = 15,
   FileKeeper = 16,
   Buzzheavier = 17,
-  FileDitch = 18,
+  // 18 was a FileDitch downloader that never shipped: its links are behind
+  // a gate page, not direct files.
   MegaDB = 19,
 }
 

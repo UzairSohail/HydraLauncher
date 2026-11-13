@@ -18,7 +18,6 @@ export const DOWNLOADER_NAME = {
   [Downloader.Epic]: "Epic Games",
   [Downloader.FileKeeper]: "FileKeeper",
   [Downloader.Buzzheavier]: "Buzzheavier",
-  [Downloader.FileDitch]: "FileDitch",
   [Downloader.MegaDB]: "MegaDB",
 };
 
