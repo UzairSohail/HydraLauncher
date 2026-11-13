@@ -16,6 +16,7 @@ export enum Downloader {
   Epic = 15,
   FileKeeper = 16,
   Buzzheavier = 17,
+  FileDitch = 18,
 }
 
 export enum DownloadSourceStatus {

@@ -1738,6 +1738,8 @@ export class DownloadManager {
         return this.getBuzzheavierDownloadOptions(download, resumingFilename);
       case Downloader.ArchiveOrg:
         return this.getArchiveOrgDownloadOptions(download, resumingFilename);
+      case Downloader.FileDitch:
+        return this.getFileDitchDownloadOptions(download, resumingFilename);
       default:
         return null;
     }
@@ -2407,6 +2409,23 @@ export class DownloadManager {
     );
     return this.buildDownloadOptions(
       downloadUrl,
+      download.downloadPath,
+      filename
+    );
+  }
+
+  /** FileDitch links already point at the file. */
+  private static async getFileDitchDownloadOptions(
+    download: Download,
+    resumingFilename?: string
+  ) {
+    const filename = this.resolveFilename(
+      resumingFilename,
+      download.uri,
+      download.uri
+    );
+    return this.buildDownloadOptions(
+      download.uri,
       download.downloadPath,
       filename
     );
