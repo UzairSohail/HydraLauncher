@@ -63,6 +63,9 @@ export async function resolveBuzzheavierInBrowser(
   id: string,
   referrer?: string
 ): Promise<{ url: string | null; status: number }> {
+  // Whatever had focus (the main window or Big Picture) gets it back once
+  // this window closes; under SteamOS Game Mode focus otherwise stays lost.
+  const previouslyFocused = BrowserWindow.getFocusedWindow();
   const browserSession = session.fromPartition(PARTITION);
   browserSession.setPermissionRequestHandler((_c, _p, callback) =>
     callback(false)
@@ -148,5 +151,8 @@ export async function resolveBuzzheavierInBrowser(
     };
   } finally {
     if (!window.isDestroyed()) window.destroy();
+    if (previouslyFocused && !previouslyFocused.isDestroyed()) {
+      previouslyFocused.focus();
+    }
   }
 }
