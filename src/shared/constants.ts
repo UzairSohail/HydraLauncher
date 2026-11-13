@@ -17,6 +17,7 @@ export enum Downloader {
   FileKeeper = 16,
   Buzzheavier = 17,
   FileDitch = 18,
+  MegaDB = 19,
 }
 
 export enum DownloadSourceStatus {

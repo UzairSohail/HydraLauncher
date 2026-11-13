@@ -18,7 +18,7 @@ import {
 } from "date-fns/locale";
 
 import { isArchiveOrgFileUri } from "./archive-org";
-import { isBuzzheavierUri, isFileDitchUri } from "./direct-hosts";
+import { isBuzzheavierUri, isFileDitchUri, isMegaDbUri } from "./direct-hosts";
 import {
   getUriGroupParts,
   normalizeUriGroups,
@@ -246,6 +246,9 @@ export const getDownloadersForUri = (uri: string) => {
   }
   if (isFileDitchUri(uri)) {
     return [Downloader.FileDitch];
+  }
+  if (isMegaDbUri(uri)) {
+    return [Downloader.MegaDB];
   }
 
   if (debridOnlyHosts.some((host) => uri.startsWith(host)))

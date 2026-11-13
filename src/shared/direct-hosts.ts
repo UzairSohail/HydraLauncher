@@ -25,3 +25,5 @@ export const isFileDitchUri = (uri: string) => {
   const host = hostnameOf(uri);
   return host !== null && host.includes("fileditch");
 };
+
+export const isMegaDbUri = (uri: string) => hostnameOf(uri) === "megadb.net";

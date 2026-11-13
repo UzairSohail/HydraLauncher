@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isBuzzheavierUri, isFileDitchUri } from "./direct-hosts.js";
+import {
+  isBuzzheavierUri,
+  isFileDitchUri,
+  isMegaDbUri,
+} from "./direct-hosts.js";
 
 describe("direct hosts", () => {
   it("recognises Buzzheavier's short domains", () => {
@@ -20,5 +24,12 @@ describe("direct hosts", () => {
     assert.equal(isFileDitchUri("https://fileditchfiles.me/x/y.rar"), true);
     assert.equal(isFileDitchUri("https://gofile.io/d/x"), false);
     assert.equal(isFileDitchUri("magnet:?xt=urn:btih:abc"), false);
+  });
+
+  it("recognises MegaDB file pages", () => {
+    assert.equal(isMegaDbUri("https://megadb.net/6ngwrde03rzn"), true);
+    assert.equal(isMegaDbUri("https://www.megadb.net/6ngwrde03rzn"), true);
+    assert.equal(isMegaDbUri("https://notmegadb.net/abc"), false);
+    assert.equal(isMegaDbUri("https://fs2.megadb.xyz/abc/x.rar"), false);
   });
 });

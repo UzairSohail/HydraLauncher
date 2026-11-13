@@ -40,6 +40,7 @@ import {
   RootzApi,
   FileKeeperApi,
   BuzzheavierApi,
+  MegaDbApi,
 } from "../hosters";
 import { TorrentService } from "../torrent-service";
 import {
@@ -1740,6 +1741,8 @@ export class DownloadManager {
         return this.getArchiveOrgDownloadOptions(download, resumingFilename);
       case Downloader.FileDitch:
         return this.getFileDitchDownloadOptions(download, resumingFilename);
+      case Downloader.MegaDB:
+        return this.getMegaDbDownloadOptions(download, resumingFilename);
       default:
         return null;
     }
@@ -2426,6 +2429,23 @@ export class DownloadManager {
     );
     return this.buildDownloadOptions(
       download.uri,
+      download.downloadPath,
+      filename
+    );
+  }
+
+  private static async getMegaDbDownloadOptions(
+    download: Download,
+    resumingFilename?: string
+  ) {
+    const downloadUrl = await MegaDbApi.getDownloadUrl(download.uri);
+    const filename = this.resolveFilename(
+      resumingFilename,
+      download.uri,
+      downloadUrl
+    );
+    return this.buildDownloadOptions(
+      downloadUrl,
       download.downloadPath,
       filename
     );
