@@ -4,6 +4,7 @@ import { Downloader } from "./constants.js";
 import {
   pickDefaultDownloader,
   pickUriForDownloader,
+  rankUrisForDownloader,
 } from "./download-choice.js";
 
 const debrid = [Downloader.AllDebrid, Downloader.RealDebrid];
@@ -96,6 +97,25 @@ describe("download choice", () => {
         getDownloadersForUri
       ),
       Downloader.AllDebrid
+    );
+  });
+
+  it("lists every link debrid could take, best first", () => {
+    const repack = {
+      uris: [
+        "https://megadb.net/abc",
+        "https://gofile.io/d/1",
+        "https://1fichier.com/?x",
+        "https://ddownload.com/y",
+      ],
+    };
+    assert.deepEqual(
+      rankUrisForDownloader(repack, Downloader.AllDebrid, getDownloadersForUri),
+      [
+        "https://1fichier.com/?x",
+        "https://megadb.net/abc",
+        "https://ddownload.com/y",
+      ]
     );
   });
 });

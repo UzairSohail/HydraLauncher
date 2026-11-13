@@ -30,6 +30,7 @@ import {
   hosterDebridDownloaders,
   pickDefaultDownloader as pickDefaultDownloaderWith,
   pickUriForDownloader as pickUriForDownloaderWith,
+  rankUrisForDownloader as rankUrisForDownloaderWith,
 } from "./download-choice";
 import { format } from "date-fns";
 import { AchievementNotificationInfo, GameRepack } from "@types";
@@ -277,6 +278,12 @@ export const pickUriForDownloader = (
   repack: { uris: string[]; unavailableUris?: string[] | null },
   downloader: Downloader
 ) => pickUriForDownloaderWith(repack, downloader, getDownloadersForUri);
+
+/** Every link of a listing a downloader can take, best first. */
+export const rankUrisForDownloader = (
+  repack: { uris: string[]; unavailableUris?: string[] | null },
+  downloader: Downloader
+) => rankUrisForDownloaderWith(repack, downloader, getDownloadersForUri);
 
 /** The downloader to preselect for a listing; see download-choice.ts. */
 export const pickDefaultDownloader = (

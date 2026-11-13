@@ -58,7 +58,18 @@ export const pickUriForDownloader = (
   repack: { uris: string[]; unavailableUris?: string[] | null },
   downloader: Downloader,
   getDownloadersForUri: GetDownloadersForUri
-): string | null => {
+): string | null =>
+  rankUrisForDownloader(repack, downloader, getDownloadersForUri)[0] ?? null;
+
+/**
+ * Every link of a listing a downloader can take, best first, so a link debrid
+ * rejects can be followed by the next one.
+ */
+export const rankUrisForDownloader = (
+  repack: { uris: string[]; unavailableUris?: string[] | null },
+  downloader: Downloader,
+  getDownloadersForUri: GetDownloadersForUri
+): string[] => {
   const unavailable = new Set(repack.unavailableUris ?? []);
   const candidates = repack.uris
     .map((uri, order) => ({ uri, order }))
@@ -72,7 +83,7 @@ export const pickUriForDownloader = (
       a.order - b.order
   );
 
-  return candidates[0]?.uri ?? null;
+  return candidates.map(({ uri }) => uri);
 };
 
 /**
