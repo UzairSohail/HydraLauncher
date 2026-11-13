@@ -100,6 +100,15 @@ const handleAxiosError = (
     return { ok: false, error: DownloadError.GofileQuotaExceeded };
   }
 
+  if (
+    downloader === Downloader.RealDebrid &&
+    (rpcErrorCode === "hoster_unsupported" ||
+      (err.response?.data as { error_code?: number } | undefined)
+        ?.error_code === 16)
+  ) {
+    return { ok: false, error: DownloadError.DebridHostNotSupported };
+  }
+
   if (err.response?.status === 403 && downloader === Downloader.RealDebrid) {
     return { ok: false, error: DownloadError.RealDebridAccountNotAuthorized };
   }

@@ -30,7 +30,7 @@ import {
   Downloader,
   MINIMUM_FREE_DISK_SPACE_BYTES,
   formatBytes,
-  getDownloadersForUri,
+  pickUriForDownloader,
   parseBytes,
 } from "@shared";
 import type { GameRepack, TorrentFile, TorrentFilesResponse } from "@types";
@@ -354,11 +354,7 @@ export function DownloadSettingsModal({
   const selectedUri = useMemo(() => {
     if (!repack || selectedDownloader === null) return null;
 
-    return (
-      repack.uris.find((uri) =>
-        getDownloadersForUri(uri).includes(selectedDownloader)
-      ) ?? null
-    );
+    return pickUriForDownloader(repack, selectedDownloader);
   }, [repack, selectedDownloader]);
 
   const selectedMagnetUri = useMemo(() => {
@@ -451,7 +447,7 @@ export function DownloadSettingsModal({
       .filter((option) => option.isAvailable)
       .map((option) => option.downloader);
 
-    setSelectedDownloader(getDefaultDownloader(availableDownloaders));
+    setSelectedDownloader(getDefaultDownloader(availableDownloaders, repack));
 
     return () => {
       cancelled = true;
@@ -459,6 +455,7 @@ export function DownloadSettingsModal({
   }, [
     userPreferences?.downloadsPath,
     downloadOptions,
+    repack,
     emulatorSystem,
     retroArchPlatform,
   ]);

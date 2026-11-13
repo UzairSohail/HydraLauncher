@@ -987,6 +987,7 @@
     "download_error_alldebrid_rate_limit_exceeded": "AllDebrid rate limit exceeded. Please wait and try again.",
     "download_error_premiumize_unavailable": "Premiumize is temporarily unavailable. Please try again later.",
     "download_error_alldebrid_unavailable": "AllDebrid is temporarily unavailable. Please try again later.",
+    "download_error_debrid_host_not_supported": "Your debrid service can't download from this host. Pick another mirror or downloader, such as Gofile, Buzzheavier or Pixeldrain.",
     "download_error_vikingfile_quota_exceeded": "You've reached the daily VikingFile limit. Please try again tomorrow.",
     "download_error_vikingfile_subscription_required": "VikingFile downloads require an active Nacho Cloud subscription.",
     "download_error_hoster_unlock_login_required": "You need to be signed in to a Nacho Launcher account to download with this downloader.",

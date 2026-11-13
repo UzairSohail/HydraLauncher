@@ -18,6 +18,7 @@ import {
   getOfficialStoreMembers,
   getRepackUriParts,
   isEpicMemberInCurrentScope,
+  pickDefaultDownloader,
 } from "@shared";
 import { DOWNLOADER_NAME, IS_DESKTOP } from "../../../constants";
 import useEmblaCarousel from "embla-carousel-react";
@@ -1553,28 +1554,9 @@ function DownloadGameOptions({
   ]);
 
   const getDefaultDownloader = useCallback(
-    (availableDownloaders: Downloader[]) => {
-      if (availableDownloaders.length === 0) return null;
-
-      if (availableDownloaders.includes(Downloader.AllDebrid)) {
-        return Downloader.AllDebrid;
-      }
-
-      if (availableDownloaders.includes(Downloader.RealDebrid)) {
-        return Downloader.RealDebrid;
-      }
-
-      if (availableDownloaders.includes(Downloader.Premiumize)) {
-        return Downloader.Premiumize;
-      }
-
-      if (availableDownloaders.includes(Downloader.TorBox)) {
-        return Downloader.TorBox;
-      }
-
-      return availableDownloaders[0];
-    },
-    []
+    (availableDownloaders: Downloader[]) =>
+      pickDefaultDownloader(option, availableDownloaders),
+    [option]
   );
 
   useEffect(() => {

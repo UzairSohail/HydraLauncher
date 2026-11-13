@@ -1,4 +1,8 @@
-import { Downloader, getDownloadersForUri } from "@shared";
+import {
+  Downloader,
+  getDownloadersForUri,
+  pickUriForDownloader,
+} from "@shared";
 import type { GameRepack, UserPreferences } from "@types";
 
 const DOWNLOADER_PREFERENCE_KEYS: Partial<
@@ -167,7 +171,11 @@ export function getDownloaderAvailabilityOptions(
         hasAvailableUri,
         isConfigured,
         isAvailable,
-        availableUri: status?.availableUri ?? null,
+        // The link this downloader is most likely to fetch, so debrid isn't
+        // handed a host it rejects while a better mirror is listed.
+        availableUri: hasAvailableUri
+          ? pickUriForDownloader(repack, downloader)
+          : null,
       } satisfies DownloaderAvailabilityOption;
     })
     .sort(

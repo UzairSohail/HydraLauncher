@@ -25,6 +25,12 @@ import {
 } from "./repack-uri-groups";
 import { charMap } from "./char-map";
 import { Downloader } from "./constants";
+import {
+  debridOnlyHosts,
+  hosterDebridDownloaders,
+  pickDefaultDownloader as pickDefaultDownloaderWith,
+  pickUriForDownloader as pickUriForDownloaderWith,
+} from "./download-choice";
 import { format } from "date-fns";
 import { AchievementNotificationInfo, GameRepack } from "@types";
 
@@ -202,17 +208,11 @@ export const formatName = pipe<string>(
   (str) => str.trim()
 );
 
-/** Hosts with no direct downloader that a debrid provider can still unlock. */
-const debridOnlyHosts = ["https://1fichier.com", "https://mediafire.com"];
-
 const buzzheavierHosts = [
   "https://buzzheavier.com",
   "https://www.buzzheavier.com",
   "https://bzzhr.co",
 ];
-
-/** Debrid providers that unlock regular file-hoster links. */
-const hosterDebridDownloaders = [Downloader.AllDebrid, Downloader.RealDebrid];
 
 export { isBlockedTorrentDownload } from "./debrid-only";
 
@@ -269,6 +269,21 @@ export const getDownloadersForUri = (uri: string) => {
 
   return [];
 };
+
+export { getUriConfidence, isKnownDebridHosterUri } from "./download-choice";
+
+/** The link of a listing a downloader is most likely to fetch. */
+export const pickUriForDownloader = (
+  repack: { uris: string[]; unavailableUris?: string[] | null },
+  downloader: Downloader
+) => pickUriForDownloaderWith(repack, downloader, getDownloadersForUri);
+
+/** The downloader to preselect for a listing; see download-choice.ts. */
+export const pickDefaultDownloader = (
+  repack: { uris: string[]; unavailableUris?: string[] | null } | null,
+  availableDownloaders: Downloader[]
+) =>
+  pickDefaultDownloaderWith(repack, availableDownloaders, getDownloadersForUri);
 
 export const getDownloadersForUris = (uris: string[]) => {
   const downloadersSet = uris.reduce<Set<Downloader>>((prev, next) => {

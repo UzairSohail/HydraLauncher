@@ -108,6 +108,7 @@ export enum DownloadError {
   NetworkCertificateRejected = "download_error_network_certificate_rejected",
   UpdateGameRunning = "download_error_update_game_running",
   UpdateSaveBackupFailed = "download_error_update_save_backup_failed",
+  DebridHostNotSupported = "download_error_debrid_host_not_supported",
 }
 
 export const MINIMUM_FREE_DISK_SPACE_BYTES = 512 * 1024 * 1024;
