@@ -18,6 +18,7 @@ import {
 } from "date-fns/locale";
 
 import { isArchiveOrgFileUri } from "./archive-org";
+import { isBuzzheavierUri, isMegaDbUri } from "./direct-hosts";
 import {
   getUriGroupParts,
   normalizeUriGroups,
@@ -36,6 +37,7 @@ import { format } from "date-fns";
 import { AchievementNotificationInfo, GameRepack } from "@types";
 
 export * from "./archive-org";
+export * from "./direct-hosts";
 export * from "./official-chat";
 export * from "./constants";
 export {
@@ -209,12 +211,6 @@ export const formatName = pipe<string>(
   (str) => str.trim()
 );
 
-const buzzheavierHosts = [
-  "https://buzzheavier.com",
-  "https://www.buzzheavier.com",
-  "https://bzzhr.co",
-];
-
 export { isBlockedTorrentDownload } from "./debrid-only";
 
 export const getDownloadersForUri = (uri: string) => {
@@ -245,8 +241,11 @@ export const getDownloadersForUri = (uri: string) => {
   if (isArchiveOrgFileUri(uri)) {
     return [Downloader.ArchiveOrg];
   }
-  if (buzzheavierHosts.some((host) => uri.startsWith(host))) {
+  if (isBuzzheavierUri(uri)) {
     return [Downloader.Buzzheavier];
+  }
+  if (isMegaDbUri(uri)) {
+    return [Downloader.MegaDB];
   }
 
   if (debridOnlyHosts.some((host) => uri.startsWith(host)))

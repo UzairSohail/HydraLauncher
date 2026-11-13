@@ -1,10 +1,8 @@
-import { DownloadError } from "@shared";
+import { DownloadError, isBuzzheavierUri } from "@shared";
 import { logger } from "../logger";
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0";
-
-export const BUZZHEAVIER_HOSTS = ["buzzheavier.com", "bzzhr.co"];
 
 /**
  * Buzzheavier's download button is an htmx request: asking for
@@ -12,12 +10,7 @@ export const BUZZHEAVIER_HOSTS = ["buzzheavier.com", "bzzhr.co"];
  */
 export class BuzzheavierApi {
   public static canHandle(uri: string): boolean {
-    try {
-      const host = new URL(uri).hostname.replace(/^www\./, "");
-      return BUZZHEAVIER_HOSTS.includes(host);
-    } catch {
-      return false;
-    }
+    return isBuzzheavierUri(uri);
   }
 
   public static async getDownloadUrl(uri: string): Promise<string> {
@@ -27,31 +20,54 @@ export class BuzzheavierApi {
       throw new Error(`Invalid Buzzheavier URL: ${uri}`);
     }
 
-    const pageUrl = `${url.origin}/${id}`;
-    const response = await fetch(`${pageUrl}/download`, {
-      redirect: "manual",
-      headers: {
-        "User-Agent": USER_AGENT,
-        Referer: pageUrl,
-        "hx-current-url": pageUrl,
-        "hx-request": "true",
-      },
-    });
-    await response.body?.cancel();
+    // Short domains (bzzhr.co, bzzhr.to) share Buzzheavier's file ids; if
+    // one doesn't answer with a link, ask the main site.
+    const origins = [...new Set([url.origin, "https://buzzheavier.com"])];
+    let notFound = false;
+    for (const origin of origins) {
+      const pageUrl = `${origin}/${id}`;
+      const response = await fetch(`${pageUrl}/download`, {
+        redirect: "manual",
+        headers: {
+          "User-Agent": USER_AGENT,
+          Referer: pageUrl,
+          "hx-current-url": pageUrl,
+          "hx-request": "true",
+        },
+      }).catch((error: unknown) => {
+        logger.warn(`[Buzzheavier] ${origin} unreachable`, error);
+        return null;
+      });
+      if (!response) continue;
+      await response.body?.cancel();
 
-    if (response.status === 404) {
-      throw new Error(DownloadError.HosterUnlockFileNotFound);
-    }
+      if (response.status === 404) {
+        notFound = true;
+        continue;
+      }
 
-    const target =
-      response.headers.get("hx-redirect") ?? response.headers.get("location");
-    if (!target) {
+      const hxRedirect = response.headers.get("hx-redirect");
+      const location = response.headers.get("location");
+      if (hxRedirect) return new URL(hxRedirect, origin).href;
+      if (location) {
+        const next = new URL(location, origin);
+        // A short domain forwarding to the main site's page for this file is
+        // not the file itself; ask the main site directly instead.
+        const isPageRedirect =
+          isBuzzheavierUri(next.href) && next.pathname.startsWith(`/${id}`);
+        if (!isPageRedirect) return next.href;
+        continue;
+      }
+
       logger.warn(
-        `[Buzzheavier] No download link for ${id} (status=${response.status})`
+        `[Buzzheavier] No download link for ${id} from ${origin} (status=${response.status})`
       );
-      throw new Error(DownloadError.HosterUnlockUnavailable);
     }
 
-    return new URL(target, url.origin).href;
+    throw new Error(
+      notFound
+        ? DownloadError.HosterUnlockFileNotFound
+        : DownloadError.HosterUnlockUnavailable
+    );
   }
 }
