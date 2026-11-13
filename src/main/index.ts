@@ -1,3 +1,5 @@
+// Must stay first: picks the data folder before anything reads it.
+import { userDataMigrationMessages } from "./user-data-location";
 import {
   app,
   BrowserWindow,
@@ -127,6 +129,8 @@ const initializeApp = async () => {
   refreshPortableShortcutLauncher();
   electronApp.setAppUserModelId("io.github.uzairsohail.nacholauncher");
 
+  userDataMigrationMessages.forEach((message) => logger.info(message));
+  logger.info("Data directory", app.getPath("userData"));
   logger.info("Crash dumps directory", app.getPath("crashDumps"));
 
   protocol.handle("local", (request) => {
