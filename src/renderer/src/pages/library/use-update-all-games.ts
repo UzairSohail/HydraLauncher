@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import {
-  getDownloadersForUri,
+  pickUriForDownloader,
   getRepackUriParts,
   toInstalledRepackInfo,
 } from "@shared";
@@ -66,13 +66,11 @@ export function useUpdateAllGames() {
             })
               .filter((option) => option.isAvailable)
               .map((option) => option.downloader);
-            const downloader = getDefaultDownloader(available);
+            const downloader = getDefaultDownloader(available, repack);
             const uri =
               downloader === null
                 ? undefined
-                : repack.uris.find((candidate) =>
-                    getDownloadersForUri(candidate).includes(downloader)
-                  );
+                : (pickUriForDownloader(repack, downloader) ?? undefined);
             if (downloader === null || !uri) {
               result.failed++;
               continue;

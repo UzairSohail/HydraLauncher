@@ -1,4 +1,5 @@
 import { Downloader } from "../../../shared/constants.js";
+import { getUriConfidence } from "../../../shared/download-choice.js";
 import type { CompanionRepack } from "../../../shared/companion.js";
 import type { UserPreferences } from "@types";
 
@@ -42,19 +43,14 @@ const isConfigured = (
   }
 };
 
-const DEBRID = new Set<Downloader>(PREFERRED);
-
 /**
- * How sure we are that an option works, best first:
- * 0. a torrent through debrid (debrid is the only way torrents are fetched),
- * 1. a host with its own downloader, such as Gofile or Buzzheavier,
- * 2. any other hoster link handed to debrid, which the service may not
- *    support ("This host or link is not supported").
+ * How sure we are that an option works, best first: a torrent through debrid,
+ * then a host with its own downloader or one debrid is known to unlock, then
+ * any other hoster link handed to debrid, which the service may not support
+ * ("This host or link is not supported").
  */
-const tier = (option: { downloader: Downloader; uri: string }) => {
-  if (option.uri.startsWith("magnet:")) return 0;
-  return DEBRID.has(option.downloader) ? 2 : 1;
-};
+const tier = (option: { downloader: Downloader; uri: string }) =>
+  getUriConfidence(option.uri, option.downloader);
 
 const preference = (downloader: Downloader) => {
   const index = PREFERRED.indexOf(downloader);

@@ -4,7 +4,7 @@ import { orderBy } from "lodash-es";
 import { ChevronDownIcon, ChevronUpIcon } from "@primer/octicons-react";
 import { Tooltip } from "react-tooltip";
 import type { DownloadSource, GameRepack } from "@types";
-import { getDownloadersForUri, getRepackUriParts } from "@shared";
+import { getRepackUriParts, pickUriForDownloader } from "@shared";
 
 import { Button } from "@renderer/components/button/button";
 import { beginDownloadFlight } from "@renderer/components/sidebar/download-flight";
@@ -73,17 +73,15 @@ function RomSourceRow({
     const downloader = getDefaultDownloader(
       downloadOptions
         .filter((option) => option.isAvailable)
-        .map((option) => option.downloader)
+        .map((option) => option.downloader),
+      repack
     );
-    const unavailableUris = new Set(repack.unavailableUris ?? []);
+    const pickedUri =
+      downloader === null ? null : pickUriForDownloader(repack, downloader);
     const uri =
-      downloader === null
-        ? undefined
-        : repack.uris.find(
-            (candidate) =>
-              !unavailableUris.has(candidate) &&
-              getDownloadersForUri(candidate).includes(downloader)
-          );
+      pickedUri && !(repack.unavailableUris ?? []).includes(pickedUri)
+        ? pickedUri
+        : undefined;
     if (downloader === null || !uri) {
       showErrorToast(t("rom_download_unavailable"));
       return;

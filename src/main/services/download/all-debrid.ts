@@ -101,6 +101,12 @@ interface AllDebridDownloadEntry {
   isLocked?: boolean;
 }
 
+/** AllDebrid's "This host or link is not supported" family of errors. */
+const ALLDEBRID_HOST_NOT_SUPPORTED_CODES = new Set([
+  "LINK_HOST_NOT_SUPPORTED",
+  "LINK_NOT_SUPPORTED",
+]);
+
 export class AllDebridClient {
   private static instance: AxiosInstance;
   private static apiToken: string;
@@ -295,6 +301,15 @@ export class AllDebridClient {
       `/link/unlock?${this.getSearchParams().toString()}`,
       new URLSearchParams({ link })
     );
+    if (
+      response.data.status === "error" &&
+      ALLDEBRID_HOST_NOT_SUPPORTED_CODES.has(response.data.error?.code ?? "")
+    ) {
+      logger.warn(
+        `[AllDebrid] Host not supported (${response.data.error?.code}): ${link}`
+      );
+      throw new Error(DownloadError.DebridHostNotSupported);
+    }
     this.ensureSuccess(response.data);
 
     const { link: downloadLink, delayed } = response.data.data;

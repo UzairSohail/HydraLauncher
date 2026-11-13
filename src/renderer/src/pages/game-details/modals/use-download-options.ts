@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 import type { GameRepack, UserPreferences } from "@types";
-import { Downloader, getDownloadersForUri } from "@shared";
+import {
+  Downloader,
+  getDownloadersForUri,
+  pickDefaultDownloader,
+} from "@shared";
 
 import { useAppSelector, useFeature, useUserDetails } from "@renderer/hooks";
 import { Feature } from "@renderer/hooks/use-feature";
@@ -151,25 +155,6 @@ export function useDownloadOptions(repack: GameRepack | null) {
 }
 
 export const getDefaultDownloader = (
-  availableDownloaders: Downloader[]
-): Downloader | null => {
-  if (availableDownloaders.length === 0) return null;
-
-  if (availableDownloaders.includes(Downloader.AllDebrid)) {
-    return Downloader.AllDebrid;
-  }
-
-  if (availableDownloaders.includes(Downloader.RealDebrid)) {
-    return Downloader.RealDebrid;
-  }
-
-  if (availableDownloaders.includes(Downloader.Premiumize)) {
-    return Downloader.Premiumize;
-  }
-
-  if (availableDownloaders.includes(Downloader.TorBox)) {
-    return Downloader.TorBox;
-  }
-
-  return availableDownloaders[0];
-};
+  availableDownloaders: Downloader[],
+  repack: Pick<GameRepack, "uris" | "unavailableUris"> | null = null
+): Downloader | null => pickDefaultDownloader(repack, availableDownloaders);
