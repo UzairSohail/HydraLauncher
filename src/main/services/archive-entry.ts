@@ -14,18 +14,14 @@ export interface ArchiveEntry {
 
 export async function listArchiveFiles(
   directoryPath: string,
-  archiveExtensions: readonly string[]
+  isArchiveFile: (fileName: string) => boolean
 ): Promise<string[]> {
   const entries = await fs.promises.readdir(directoryPath, {
     withFileTypes: true,
   });
   // Subfolders can contain ZIP assets required by an already unpacked game.
   return entries
-    .filter(
-      (entry) =>
-        entry.isFile() &&
-        archiveExtensions.some((ext) => entry.name.toLowerCase().endsWith(ext))
-    )
+    .filter((entry) => entry.isFile() && isArchiveFile(entry.name))
     .map((entry) => entry.name);
 }
 
