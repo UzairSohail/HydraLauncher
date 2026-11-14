@@ -1,0 +1,84 @@
+name: Check download hosts
+
+# Once a week, tries real links from your download sources against the app's
+# host resolvers (Buzzheavier, MegaDB, Pixeldrain, Gofile, Mediafire, Rootz,
+# FileKeeper). If one is broken it opens an issue (or comments on the open
+# one); once they all work again the issue is closed.
+#
+# Set the repository variable HOSTER_CHECK_SOURCES (Settings > Secrets and
+# variables > Actions > Variables) to your download source JSON URLs,
+# separated by spaces or new lines. HOSTER_CHECK_LINKS can add single links.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: check-hosters
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE_TITLE: "Download host check failed"
+
+    steps:
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.21.0
+
+      - name: Install dependencies
+        run: yarn --frozen-lockfile --ignore-scripts
+
+      - name: Check hosts
+        id: check
+        continue-on-error: true
+        env:
+          HOSTER_CHECK_SOURCES: ${{ vars.HOSTER_CHECK_SOURCES }}
+          HOSTER_CHECK_LINKS: ${{ vars.HOSTER_CHECK_LINKS }}
+          HOSTER_CHECK_REPORT: hoster-check-report.md
+        run: |
+          if [ -z "$HOSTER_CHECK_SOURCES$HOSTER_CHECK_LINKS" ]; then
+            echo "::warning::Set the HOSTER_CHECK_SOURCES repository variable so there are links to check."
+          fi
+          node scripts/check-hosters.mjs
+
+      - name: Show the report
+        if: always()
+        run: cat hoster-check-report.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Open or update the issue
+        if: steps.check.outcome == 'failure'
+        run: |
+          body="$(cat hoster-check-report.md)
+
+          [Workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"
+          number="$(gh issue list --state open --search "\"$ISSUE_TITLE\" in:title" --json number --jq '.[0].number')"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$ISSUE_TITLE" --body "$body"
+          fi
+          exit 1
+
+      - name: Close the issue once hosts work again
+        if: steps.check.outcome == 'success'
+        run: |
+          number="$(gh issue list --state open --search "\"$ISSUE_TITLE\" in:title" --json number --jq '.[0].number')"
+          if [ -n "$number" ]; then
+            gh issue close "$number" --comment "All checked hosts work again."
+          fi
