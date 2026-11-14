@@ -1562,6 +1562,7 @@
     "torbox_description": "TorBox is your premium seedbox service rivaling even the best servers on the market.",
     "premiumize_description": "Premiumize is an unrestricted downloader service that supports fast downloads and cloud transfers.",
     "alldebrid_description": "AllDebrid is an unrestricted downloader service for premium links and magnet downloads.",
+    "debrid_recommended": "Recommended",
     "torbox_account_linked": "TorBox account linked",
     "premiumize_account_linked": "Premiumize account linked",
     "alldebrid_account_linked": "AllDebrid account linked",

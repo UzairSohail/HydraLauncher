@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, type ReactNode } from "react";
 import { useFeature, useAppSelector } from "@renderer/hooks";
 import {
   readStoredSectionCollapsed,
@@ -24,8 +24,6 @@ export function SettingsDebrid() {
   const { isFeatureEnabled, Feature } = useFeature();
   const isTorBoxEnabled = isFeatureEnabled(Feature.TorBox);
   const isPremiumizeEnabled = isFeatureEnabled(Feature.Premiumize);
-  // AllDebrid is the recommended provider in this fork, so always offer it.
-  const isAllDebridEnabled = true;
 
   const userPreferences = useAppSelector(
     (state) => state.userPreferences.value
@@ -44,9 +42,16 @@ export function SettingsDebrid() {
       "premiumize",
       !userPreferences?.premiumizeApiToken
     ),
+    // Open AllDebrid by default until some provider has a key, so a new
+    // install shows where to paste one.
     allDebrid: readStoredSectionCollapsed(
       "allDebrid",
-      !userPreferences?.allDebridApiToken
+      !userPreferences?.allDebridApiToken &&
+        Boolean(
+          userPreferences?.realDebridApiToken ||
+            userPreferences?.premiumizeApiToken ||
+            userPreferences?.torBoxApiToken
+        )
     ),
   }));
 
@@ -63,44 +68,49 @@ export function SettingsDebrid() {
     [collapseState]
   );
 
-  return (
-    <div className="settings-debrid">
-      <p className="settings-debrid__description">{t("debrid_description")}</p>
+  const renderSection = (
+    section: keyof CollapseState,
+    providerKey: string,
+    hasToken: boolean,
+    content: ReactNode,
+    recommended = false
+  ) => {
+    const collapsed = collapseState[section];
+    const provider = t(providerKey);
 
+    return (
       <div
+        key={section}
         className={`settings-debrid__section ${
-          collapseState.realDebrid ? "" : "settings-debrid__section--expanded"
+          collapsed ? "" : "settings-debrid__section--expanded"
         }`}
       >
         <div className="settings-debrid__section-header">
           <button
             type="button"
             className="settings-debrid__collapse-button"
-            onClick={() => toggleSection("realDebrid")}
+            onClick={() => toggleSection(section)}
             aria-label={
-              collapseState.realDebrid
-                ? t("expand_debrid_section", {
-                    provider: t("debrid_provider_real_debrid"),
-                  })
-                : t("collapse_debrid_section", {
-                    provider: t("debrid_provider_real_debrid"),
-                  })
+              collapsed
+                ? t("expand_debrid_section", { provider })
+                : t("collapse_debrid_section", { provider })
             }
           >
             <span
               className={`settings-debrid__collapse-icon ${
-                collapseState.realDebrid
-                  ? ""
-                  : "settings-debrid__collapse-icon--expanded"
+                collapsed ? "" : "settings-debrid__collapse-icon--expanded"
               }`}
             >
               <ChevronRightIcon size={16} />
             </span>
           </button>
-          <h3 className="settings-debrid__section-title">
-            {t("debrid_provider_real_debrid")}
-          </h3>
-          {userPreferences?.realDebridApiToken && (
+          <h3 className="settings-debrid__section-title">{provider}</h3>
+          {recommended && (
+            <span className="settings-debrid__recommended-badge">
+              {t("debrid_recommended")}
+            </span>
+          )}
+          {hasToken && (
             <CheckCircleFillIcon
               size={16}
               className="settings-debrid__check-icon"
@@ -108,146 +118,46 @@ export function SettingsDebrid() {
           )}
         </div>
 
-        {!collapseState.realDebrid && <SettingsRealDebrid />}
+        {!collapsed && content}
       </div>
+    );
+  };
 
-      {isPremiumizeEnabled && (
-        <div
-          className={`settings-debrid__section ${
-            collapseState.premiumize ? "" : "settings-debrid__section--expanded"
-          }`}
-        >
-          <div className="settings-debrid__section-header">
-            <button
-              type="button"
-              className="settings-debrid__collapse-button"
-              onClick={() => toggleSection("premiumize")}
-              aria-label={
-                collapseState.premiumize
-                  ? t("expand_debrid_section", {
-                      provider: t("debrid_provider_premiumize"),
-                    })
-                  : t("collapse_debrid_section", {
-                      provider: t("debrid_provider_premiumize"),
-                    })
-              }
-            >
-              <span
-                className={`settings-debrid__collapse-icon ${
-                  collapseState.premiumize
-                    ? ""
-                    : "settings-debrid__collapse-icon--expanded"
-                }`}
-              >
-                <ChevronRightIcon size={16} />
-              </span>
-            </button>
-            <h3 className="settings-debrid__section-title">
-              {t("debrid_provider_premiumize")}
-            </h3>
-            {userPreferences?.premiumizeApiToken && (
-              <CheckCircleFillIcon
-                size={16}
-                className="settings-debrid__check-icon"
-              />
-            )}
-          </div>
+  // AllDebrid is the recommended provider in this fork, so it comes first.
+  return (
+    <div className="settings-debrid">
+      <p className="settings-debrid__description">{t("debrid_description")}</p>
 
-          {!collapseState.premiumize && <SettingsPremiumize />}
-        </div>
+      {renderSection(
+        "allDebrid",
+        "debrid_provider_alldebrid",
+        Boolean(userPreferences?.allDebridApiToken),
+        <SettingsAllDebrid />,
+        true
       )}
 
-      {isAllDebridEnabled && (
-        <div
-          className={`settings-debrid__section ${
-            collapseState.allDebrid ? "" : "settings-debrid__section--expanded"
-          }`}
-        >
-          <div className="settings-debrid__section-header">
-            <button
-              type="button"
-              className="settings-debrid__collapse-button"
-              onClick={() => toggleSection("allDebrid")}
-              aria-label={
-                collapseState.allDebrid
-                  ? t("expand_debrid_section", {
-                      provider: t("debrid_provider_alldebrid"),
-                    })
-                  : t("collapse_debrid_section", {
-                      provider: t("debrid_provider_alldebrid"),
-                    })
-              }
-            >
-              <span
-                className={`settings-debrid__collapse-icon ${
-                  collapseState.allDebrid
-                    ? ""
-                    : "settings-debrid__collapse-icon--expanded"
-                }`}
-              >
-                <ChevronRightIcon size={16} />
-              </span>
-            </button>
-            <h3 className="settings-debrid__section-title">
-              {t("debrid_provider_alldebrid")}
-            </h3>
-            {userPreferences?.allDebridApiToken && (
-              <CheckCircleFillIcon
-                size={16}
-                className="settings-debrid__check-icon"
-              />
-            )}
-          </div>
-
-          {!collapseState.allDebrid && <SettingsAllDebrid />}
-        </div>
+      {renderSection(
+        "realDebrid",
+        "debrid_provider_real_debrid",
+        Boolean(userPreferences?.realDebridApiToken),
+        <SettingsRealDebrid />
       )}
 
-      {isTorBoxEnabled && (
-        <div
-          className={`settings-debrid__section ${
-            collapseState.torbox ? "" : "settings-debrid__section--expanded"
-          }`}
-        >
-          <div className="settings-debrid__section-header">
-            <button
-              type="button"
-              className="settings-debrid__collapse-button"
-              onClick={() => toggleSection("torbox")}
-              aria-label={
-                collapseState.torbox
-                  ? t("expand_debrid_section", {
-                      provider: t("debrid_provider_torbox"),
-                    })
-                  : t("collapse_debrid_section", {
-                      provider: t("debrid_provider_torbox"),
-                    })
-              }
-            >
-              <span
-                className={`settings-debrid__collapse-icon ${
-                  collapseState.torbox
-                    ? ""
-                    : "settings-debrid__collapse-icon--expanded"
-                }`}
-              >
-                <ChevronRightIcon size={16} />
-              </span>
-            </button>
-            <h3 className="settings-debrid__section-title">
-              {t("debrid_provider_torbox")}
-            </h3>
-            {userPreferences?.torBoxApiToken && (
-              <CheckCircleFillIcon
-                size={16}
-                className="settings-debrid__check-icon"
-              />
-            )}
-          </div>
+      {isPremiumizeEnabled &&
+        renderSection(
+          "premiumize",
+          "debrid_provider_premiumize",
+          Boolean(userPreferences?.premiumizeApiToken),
+          <SettingsPremiumize />
+        )}
 
-          {!collapseState.torbox && <SettingsTorBox />}
-        </div>
-      )}
+      {isTorBoxEnabled &&
+        renderSection(
+          "torbox",
+          "debrid_provider_torbox",
+          Boolean(userPreferences?.torBoxApiToken),
+          <SettingsTorBox />
+        )}
     </div>
   );
 }

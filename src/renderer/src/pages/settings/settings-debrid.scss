@@ -77,4 +77,14 @@
     letter-spacing: 0.5px;
     flex-shrink: 0;
   }
+
+  &__recommended-badge {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: globals.$muted-color;
+    font-size: globals.$tiny-font-size;
+    font-weight: 600;
+    padding: 2px calc(globals.$spacing-unit / 2);
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
 }
