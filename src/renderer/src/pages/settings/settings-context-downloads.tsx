@@ -9,6 +9,12 @@ import { SettingsGlobalTrackers } from "./settings-global-trackers";
 
 import "./settings-general.scss";
 
+// Torrents only download through a debrid provider in Nacho Launcher, so the
+// local torrent engine never runs and its seeding, tracker and network
+// adapter options would have no effect. They stay in the code (easier
+// upstream merges) but are not shown.
+const SHOW_LOCAL_TORRENT_SETTINGS = false;
+
 const formatLimitInputValue = (
   value: number,
   useMegabytes: boolean
@@ -196,29 +202,33 @@ export function SettingsContextDownloads() {
           placeholder={t("max_download_speed_unlimited")}
         />
 
-        <div className="settings-general__network-interface">
-          <SelectField
-            label={t("network_interface")}
-            value={form.torrentNetworkInterface}
-            onChange={(event) =>
-              handleChange({ torrentNetworkInterface: event.target.value })
-            }
-            options={networkInterfaceOptions}
-          />
-          <small className="settings-general__network-interface-hint">
-            {t("network_interface_hint")}
-          </small>
-        </div>
+        {SHOW_LOCAL_TORRENT_SETTINGS && (
+          <>
+            <div className="settings-general__network-interface">
+              <SelectField
+                label={t("network_interface")}
+                value={form.torrentNetworkInterface}
+                onChange={(event) =>
+                  handleChange({ torrentNetworkInterface: event.target.value })
+                }
+                options={networkInterfaceOptions}
+              />
+              <small className="settings-general__network-interface-hint">
+                {t("network_interface_hint")}
+              </small>
+            </div>
 
-        <CheckboxField
-          label={t("seed_after_download_complete")}
-          checked={form.seedAfterDownloadComplete}
-          onChange={() =>
-            handleChange({
-              seedAfterDownloadComplete: !form.seedAfterDownloadComplete,
-            })
-          }
-        />
+            <CheckboxField
+              label={t("seed_after_download_complete")}
+              checked={form.seedAfterDownloadComplete}
+              onChange={() =>
+                handleChange({
+                  seedAfterDownloadComplete: !form.seedAfterDownloadComplete,
+                })
+              }
+            />
+          </>
+        )}
 
         <CheckboxField
           label={t("extract_files_by_default")}
@@ -261,10 +271,12 @@ export function SettingsContextDownloads() {
         )}
       </div>
 
-      <div className="settings-context-panel__group">
-        <h3>{t("global_trackers")}</h3>
-        <SettingsGlobalTrackers />
-      </div>
+      {SHOW_LOCAL_TORRENT_SETTINGS && (
+        <div className="settings-context-panel__group">
+          <h3>{t("global_trackers")}</h3>
+          <SettingsGlobalTrackers />
+        </div>
+      )}
     </div>
   );
 }
