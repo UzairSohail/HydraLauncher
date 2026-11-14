@@ -1,33 +1,35 @@
 <div align="center">
 
-[<img src="https://raw.githubusercontent.com/hydralauncher/hydra/refs/heads/main/resources/icon.png" width="144"/>](https://help.hydralauncher.gg)
+<img src="./resources/icon.png" width="144" alt="Nacho Launcher icon"/>
 
-  <h1 align="center">Hydra Launcher</h1>
+  <h1 align="center">Nacho Launcher</h1>
 
   <p align="center">
-    <strong>Hydra Launcher is an open-source gaming platform created to be the single tool that you need in order to manage your gaming library. Hydra is written in Node.js (Electron, React, Typescript) and Rust, with libtorrent providing the torrent engine.</strong>
+    <strong>Nacho Launcher is a personal gaming launcher for managing your whole game library, with saves, settings and achievements synced across your devices through your own Google Drive. It is built on the open-source <a href="https://github.com/hydralauncher/hydra">Hydra Launcher</a> (Electron, React, TypeScript and Rust).</strong>
   </p>
 
-[![build](https://img.shields.io/github/actions/workflow/status/hydralauncher/hydra/build.yml)](https://github.com/hydralauncher/hydra/actions)
-[![release](https://img.shields.io/github/package-json/v/hydralauncher/hydra)](https://github.com/hydralauncher/hydra/releases)
-[![chocolatey](https://img.shields.io/chocolatey/v/hydralauncher.svg)](https://community.chocolatey.org/packages/hydralauncher)
-
-![Hydra Launcher Home Page](./docs/screenshot.png)
+[![release](https://img.shields.io/github/v/release/UzairSohail/NachoLauncher)](https://github.com/UzairSohail/NachoLauncher/releases/latest)
+[![build](https://img.shields.io/github/actions/workflow/status/UzairSohail/NachoLauncher/release.yml?branch=master)](https://github.com/UzairSohail/NachoLauncher/actions/workflows/release.yml)
 
 </div>
 
 ## Features
 
-- Add games that you own to your library
-- Have a nice profile that shows what you are playing to your friends
-- Save your game progress in the cloud with Hydra Cloud
-- Unlock achievements
-- Navigate through a rich catalogue with a powerful suggestion algorithm
-- Discover new games that you haven't played before
+- Add the games you own to one library and browse a rich catalogue
+- Download through a debrid service (AllDebrid recommended) or direct download links
+- Get notified when a game you downloaded has an update, and update it in place
+- Cloud saves through your own Google Drive ([details](docs/personal-cloud-saves.md))
+- Settings, achievements and collections synced across devices ([settings sync](docs/settings-sync.md), [achievement sync](docs/achievement-sync.md))
+- Updates itself from this repo's [Releases](https://github.com/UzairSohail/NachoLauncher/releases), including the Linux AppImage on SteamOS
+- Android companion app ([details](docs/companion-app.md))
+
+## Download
+
+Grab the latest installer or AppImage from [Releases](https://github.com/UzairSohail/NachoLauncher/releases/latest). Once installed, Nacho Launcher keeps itself up to date.
 
 ## Build from source and contributing
 
-Please, refer to our Documentation pages: [docs.hydralauncher.gg](https://docs.hydralauncher.gg/getting-started)
+The upstream Hydra docs still apply to building from source: [docs.hydralauncher.gg](https://docs.hydralauncher.gg/getting-started)
 
 ### Local development requirements
 
@@ -41,12 +43,10 @@ The native build includes a Rust wrapper around pinned libtorrent. Development a
 
 On Windows x64 and Linux x64, the libtorrent bridge comes prebuilt from `native/torrent-bridge/prebuilt`, so installs skip compiling libtorrent through vcpkg. Other platforms build it from source. When a branch push changes `native/torrent-bridge` or `scripts/build-torrent-bridge.cjs`, the "Torrent bridge prebuilts" workflow rebuilds the binaries and commits them to that branch; until then, installs build the bridge from source. Set `HYDRA_TORRENT_BRIDGE_FROM_SOURCE=1` to always build it from source.
 
-## Contributors
+## Credits
 
-<a href="https://github.com/hydralauncher/hydra/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=hydralauncher/hydra" />
-</a>
+Nacho Launcher is based on [Hydra Launcher](https://github.com/hydralauncher/hydra) by Los Broxas and its contributors.
 
 ## License
 
-Hydra is licensed under the [MIT License](LICENSE).
+Nacho Launcher, like Hydra, is licensed under the [MIT License](LICENSE).
