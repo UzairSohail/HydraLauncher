@@ -45,6 +45,7 @@ import { ClassicsScanModal } from "./pages/settings/emulation/classics-scan-moda
 import { Ps4PkgJobHost } from "./components/ps4-pkg-job/ps4-pkg-job-host";
 import { RetroArchScanModal } from "./pages/settings/emulation/retroarch-scan-modal";
 import { GoogleSignInPrompt } from "./components/google-sign-in-prompt";
+import { StartWithComputerPrompt } from "./components/start-with-computer-prompt";
 import { useMissingScreenshotsToast } from "./hooks/use-missing-screenshots-toast";
 import { useScreenshotUploadFailureToast } from "./hooks/use-screenshot-upload-failure-toast";
 import { playMessageSound } from "./pages/chat-window/chat-sounds";
@@ -797,6 +798,7 @@ export function App() {
       />
 
       <GoogleSignInPrompt />
+      <StartWithComputerPrompt />
 
       <ClassicsScanModal />
       <Ps4PkgJobHost />
