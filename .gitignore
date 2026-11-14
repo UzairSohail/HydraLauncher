@@ -31,4 +31,3 @@ native/torrent-bridge/build/
 native/torrent-bridge/vcpkg_installed/
 *.local.ts
 src/renderer/public/*.local/
-hoster-check-report.md
