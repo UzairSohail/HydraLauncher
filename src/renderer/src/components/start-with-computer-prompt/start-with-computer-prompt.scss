@@ -1,0 +1,21 @@
+@use "../../scss/globals.scss";
+
+.start-with-computer-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: calc(globals.$spacing-unit * 2);
+  max-width: 480px;
+  line-height: 1.5;
+
+  &__note {
+    opacity: 0.7;
+    font-size: 13px;
+  }
+
+  &__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: globals.$spacing-unit;
+    margin-top: globals.$spacing-unit;
+  }
+}

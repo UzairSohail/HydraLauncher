@@ -12,6 +12,9 @@ const autoLaunch = async (
   const appLauncher = new AutoLaunch({
     name: app.getName(),
     isHidden: autoLaunchProps.minimized,
+    // An AppImage runs from a temporary mount that changes every launch, so
+    // point the autostart entry at the AppImage file itself.
+    ...(process.env.APPIMAGE ? { path: process.env.APPIMAGE } : {}),
   });
 
   if (autoLaunchProps.enabled) {
